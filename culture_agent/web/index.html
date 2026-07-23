@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="A local-first companion for books and films." />
+    <title>栖光 · Local Culture Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">栖</div>
+          <div>
+            <strong>栖光</strong>
+            <span>Local Culture Agent</span>
+          </div>
+        </div>
+
+        <button class="new-chat" id="new-chat">＋ 新的对话</button>
+
+        <nav>
+          <button class="nav-item active" data-view="chat"><span>◌</span> 对话</button>
+          <button class="nav-item" data-view="library"><span>▦</span> 我的书影音</button>
+        </nav>
+
+        <div class="privacy-card">
+          <span class="privacy-dot"></span>
+          <div>
+            <strong>本地记忆已开启</strong>
+            <p>记录保存在你的设备上</p>
+          </div>
+        </div>
+      </aside>
+
+      <main>
+        <section class="chat-view" id="chat-view">
+          <header>
+            <div>
+              <p class="eyebrow">你的私人文化伙伴</p>
+              <h1>今天想聊点什么？</h1>
+            </div>
+            <button class="model-pill" id="model-pill">● offline</button>
+          </header>
+
+          <div class="messages" id="messages">
+            <article class="message assistant">
+              <div class="avatar">栖</div>
+              <div class="bubble">
+                <p>你好。我可以陪你聊书和电影，也会在你允许时把评分与感受留在本地。</p>
+                <p>试着告诉我：“我看完《一一》，9分，很喜欢它对日常生活的观察。”</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="suggestions" id="suggestions">
+            <button>我最近喜欢什么？</button>
+            <button>今天有点累，推荐一部电影</button>
+            <button>看看我的本地记录</button>
+          </div>
+
+          <form class="composer" id="chat-form">
+            <textarea id="message-input" rows="1" placeholder="聊聊最近读过、看过或想看的……"></textarea>
+            <button type="submit" aria-label="发送">↑</button>
+            <span>Enter 发送 · Shift + Enter 换行</span>
+          </form>
+        </section>
+
+        <section class="library-view hidden" id="library-view">
+          <header>
+            <div>
+              <p class="eyebrow">LOCAL LIBRARY</p>
+              <h1>我的书影音</h1>
+            </div>
+            <div class="count" id="entry-count">0 条记录</div>
+          </header>
+          <div class="library-grid" id="library-grid"></div>
+          <div class="empty-library" id="empty-library">
+            <div>◫</div>
+            <h2>这里还很安静</h2>
+            <p>回到对话，告诉我你刚读完或看完的作品。</p>
+          </div>
+        </section>
+      </main>
+
+      <aside class="memory-panel">
+        <p class="eyebrow">本次读取的记忆</p>
+        <div id="memory-list" class="memory-list">
+          <div class="empty-memory">当回答使用你的历史记录时，依据会显示在这里。</div>
+        </div>
+        <div class="memory-note">
+          <span>⌁</span>
+          <p>你可以随时查看、纠正或删除记忆。模型不会直接修改数据库。</p>
+        </div>
+      </aside>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
+
