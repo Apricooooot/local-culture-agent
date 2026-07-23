@@ -28,29 +28,178 @@ The product is built around a **model + harness** architecture:
 
 ## Quick start
 
-Python 3.11 or newer is the only requirement.
+Python 3.11 or newer is the only runtime requirement. The default offline mode
+does not download a model, call a remote API, or require an API key.
+
+```bash
+git clone https://github.com/Apricooooot/local-culture-agent.git
+cd local-culture-agent
+```
+
+Creating a virtual environment is optional because the MVP uses only the Python
+standard library, but it keeps future dependencies isolated:
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+```powershell
+# Windows PowerShell
+.\.venv\Scripts\Activate.ps1
+```
+
+```bash
+# macOS or Linux
+source .venv/bin/activate
+```
+
+Start the app:
 
 ```bash
 python -m culture_agent.server
 ```
 
-Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
-
-The database is created at `data/culture_agent.db`. Ratings, reflections,
-preference signals, and retrieved memories stay on the device by default.
-
-### Use Ollama
-
-Start an OpenAI-compatible Ollama endpoint, then set:
+Open [http://127.0.0.1:8765](http://127.0.0.1:8765). To use a different
+port:
 
 ```powershell
-$env:CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
-$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434/v1"
-$env:CULTURE_AGENT_MODEL_NAME="qwen3:8b"
+# Windows PowerShell
+$env:CULTURE_AGENT_PORT="9000"
 python -m culture_agent.server
 ```
 
-Any OpenAI-compatible provider can be used by setting `CULTURE_AGENT_API_KEY`.
+```bash
+# macOS or Linux
+CULTURE_AGENT_PORT=9000 python -m culture_agent.server
+```
+
+The database is created at `data/culture_agent.db`. Ratings, reflections,
+preference signals, and retrieved memories stay on the device by default.
+Stop the server with `Ctrl+C`. Back up or move the `data/` directory to keep
+your journal; it is excluded from Git.
+
+### Use Ollama
+
+[Ollama](https://ollama.com/download) is a local model runner, not a model
+itself. Install Ollama, download a model, and confirm that the local service is
+running:
+
+```powershell
+# Windows PowerShell
+ollama pull qwen3:4b
+ollama list
+
+$env:CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
+$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434/v1"
+$env:CULTURE_AGENT_MODEL_NAME="qwen3:4b"
+python -m culture_agent.server
+```
+
+```bash
+# macOS or Linux
+ollama pull qwen3:4b
+ollama list
+
+export CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
+export CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434/v1"
+export CULTURE_AGENT_MODEL_NAME="qwen3:4b"
+python -m culture_agent.server
+```
+
+If Ollama is installed but the service is not running, start it with
+`ollama serve`. The app uses Ollama's
+[OpenAI-compatible chat endpoint](https://docs.ollama.com/api/openai-compatibility).
+The API key can remain empty because Ollama ignores it locally.
+
+### Other local model servers
+
+The harness works with any server that exposes
+`POST /v1/chat/completions`. Set these four variables:
+
+| Variable | Meaning |
+| --- | --- |
+| `CULTURE_AGENT_MODEL_PROVIDER` | Use `openai-compatible` |
+| `CULTURE_AGENT_MODEL_BASE_URL` | Server URL ending in `/v1` |
+| `CULTURE_AGENT_MODEL_NAME` | Exact model ID exposed by the server |
+| `CULTURE_AGENT_API_KEY` | Optional local-server key; leave empty when authentication is disabled |
+
+Recommended local servers:
+
+| Server | Best for | Default base URL | Setup |
+| --- | --- | --- | --- |
+| **LM Studio** | The easiest graphical setup on Windows, macOS, or Linux | `http://localhost:1234/v1` | Download a model, open **Developer**, load it, and select **Start server**. [Official server guide](https://lmstudio.ai/docs/developer/core/server) |
+| **llama.cpp** | A small native runtime, CPU/GPU flexibility, and direct GGUF control | `http://localhost:8080/v1` | Run `llama-server -m path/to/model.gguf --port 8080`. [Official server documentation](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md) |
+| **LocalAI** | Docker, a web UI, multiple model backends, and a self-hosted OpenAI replacement | `http://localhost:8080/v1` | Docker is the recommended installation path; install a model from its UI or gallery. [Official quick start](https://localai.io/getting-started/index.html) |
+| **vLLM** | NVIDIA GPU servers, higher throughput, and multi-user deployments | `http://localhost:8000/v1` | Run `vllm serve MODEL_ID --api-key local-token`. [Official OpenAI-compatible server guide](https://docs.vllm.ai/en/stable/serving/openai_compatible_server/) |
+
+Example for LM Studio:
+
+```powershell
+$env:CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
+$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:1234/v1"
+$env:CULTURE_AGENT_MODEL_NAME="the-model-id-shown-by-lm-studio"
+python -m culture_agent.server
+```
+
+Example for llama.cpp:
+
+```powershell
+llama-server -m C:\models\model.gguf --host 127.0.0.1 --port 8080
+
+$env:CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
+$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:8080/v1"
+$env:CULTURE_AGENT_MODEL_NAME="the-model-id-returned-by-the-server"
+python -m culture_agent.server
+```
+
+Example for vLLM:
+
+```bash
+vllm serve Qwen/Qwen3-8B --api-key local-token
+
+export CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
+export CULTURE_AGENT_MODEL_BASE_URL="http://localhost:8000/v1"
+export CULTURE_AGENT_MODEL_NAME="Qwen/Qwen3-8B"
+export CULTURE_AGENT_API_KEY="local-token"
+python -m culture_agent.server
+```
+
+Use the server's `/v1/models` endpoint when you are unsure which exact model ID
+to configure:
+
+```bash
+curl http://localhost:1234/v1/models
+```
+
+### Suggested local models
+
+Start with an instruction/chat model rather than a base model. Prefer a
+quantized build when using a laptop or CPU-only machine.
+
+| Model | Why it fits this project | Suggested starting point |
+| --- | --- | --- |
+| [Qwen3 4B](https://huggingface.co/Qwen/Qwen3-4B) | Small, multilingual, and a sensible first test on modest hardware | A 4-bit quantization through Ollama, LM Studio, or llama.cpp |
+| [Qwen3 8B](https://huggingface.co/Qwen/Qwen3-8B) | Stronger multilingual conversation, instruction following, and agent-oriented behavior | A 4-bit quantization when the machine can comfortably run an 8B model |
+| [Gemma 3 4B IT](https://huggingface.co/google/gemma-3-4b-it) | Lightweight instruction model with broad multilingual support | Good alternative when a compatible runner provides an accepted-license build |
+| [Ministral 3 8B Instruct](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512-GGUF) | Apache-2.0 GGUF releases, multilingual support, and an edge-deployment focus | A GGUF quantization with llama.cpp or LM Studio |
+
+Model quality and memory usage depend on quantization, context size, backend,
+and hardware. A smaller model that runs reliably is a better starting point
+than a larger model that continuously swaps memory. For Chinese/English use,
+start with Qwen3 4B, then compare Qwen3 8B if resources allow.
+
+### Connection troubleshooting
+
+1. Confirm the model server is running.
+2. Open or query `BASE_URL/models`.
+3. Copy the returned model ID exactly into `CULTURE_AGENT_MODEL_NAME`.
+4. Confirm that `CULTURE_AGENT_MODEL_BASE_URL` includes `/v1`.
+5. Restart Local Culture Agent after changing environment variables.
+
+If the model server is unavailable, local records are not lost. Restart without
+`CULTURE_AGENT_MODEL_PROVIDER` to return to the deterministic offline mode.
 
 ## Try these conversations
 
@@ -144,4 +293,3 @@ Local-first is a product boundary, not just a deployment option:
 
 Before a production release, the app will also expose local export, deletion,
 memory inspection, and per-provider consent controls.
-
