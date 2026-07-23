@@ -55,7 +55,21 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.harness.add_entry({"title": "A", "kind": "podcast"})
 
+    def test_english_record_uses_english_reply(self) -> None:
+        result = self.harness.chat(
+            "I watched 《Arrival》, 9/10. I loved its quiet approach to language and grief."
+        )
+        self.assertEqual(result.intent, "record")
+        self.assertEqual(result.created_entry["title"], "Arrival")
+        self.assertEqual(result.created_entry["kind"], "film")
+        self.assertIn("Saved locally", result.reply)
+
+    def test_language_can_switch_per_turn(self) -> None:
+        english = self.harness.chat("What do I seem to like?")
+        chinese = self.harness.chat("我喜欢什么？为什么觉得？")
+        self.assertIn("not enough", english.reply.lower())
+        self.assertIn("没有足够", chinese.reply)
+
 
 if __name__ == "__main__":
     unittest.main()
-
