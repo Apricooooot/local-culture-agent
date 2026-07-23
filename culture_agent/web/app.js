@@ -5,6 +5,51 @@ const suggestions = document.querySelector("#suggestions");
 const memoryList = document.querySelector("#memory-list");
 const chatView = document.querySelector("#chat-view");
 const libraryView = document.querySelector("#library-view");
+const isChineseUI = navigator.language.toLowerCase().startsWith("zh");
+
+const locale = {
+  noMemory: isChineseUI ? "这次回答没有读取历史记录。" : "This reply did not read historical records.",
+  film: isChineseUI ? "电影" : "Film",
+  book: isChineseUI ? "书籍" : "Book",
+  unrated: isChineseUI ? "未评分" : "Unrated",
+  noReflection: isChineseUI ? "没有心得" : "No reflection yet",
+  readingMemory: isChineseUI ? "正在读取相关记忆…" : "Reading relevant memories…",
+  error: isChineseUI ? "抱歉，刚才没有处理成功：" : "Sorry, that did not work: ",
+  records: isChineseUI ? "条记录" : "records",
+};
+
+function applyBrowserLocale() {
+  if (!isChineseUI) return;
+  document.documentElement.lang = "zh-CN";
+  document.title = "栖光 · Local Culture Agent";
+  const copy = {
+    "#brand-name": "栖光",
+    "#new-chat": "＋ 新的对话",
+    '[data-view="chat"]': "◌ 对话",
+    '[data-view="library"]': "▦ 我的书影音",
+    "#privacy-title": "本地记忆已开启",
+    "#privacy-copy": "记录保存在你的设备上",
+    "#chat-eyebrow": "你的私人文化伙伴",
+    "#chat-title": "今天想聊点什么？",
+    "#welcome-one": "你好。我可以陪你聊书和电影，也会在你允许时把评分与感受留在本地。",
+    "#welcome-two": "试着告诉我：“我看完《一一》，9分，很喜欢它对日常生活的观察。”",
+    "#composer-hint": "Enter 发送 · Shift + Enter 换行",
+    "#library-title": "我的书影音",
+    "#empty-title": "这里还很安静",
+    "#empty-copy": "回到对话，告诉我你刚读完或看完的作品。",
+    "#memory-title": "本次读取的记忆",
+    "#memory-note": "你可以随时查看、纠正或删除记忆。模型不会直接修改数据库。",
+  };
+  Object.entries(copy).forEach(([selector, text]) => {
+    const node = document.querySelector(selector);
+    if (node) node.textContent = text;
+  });
+  document.querySelector("#message-input").placeholder = "聊聊最近读过、看过或想看的……";
+  const suggestionCopy = ["我最近喜欢什么？", "今天有点累，推荐一部电影", "看看我的本地记录"];
+  document.querySelectorAll("#suggestions button").forEach((button, index) => {
+    button.textContent = suggestionCopy[index];
+  });
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -28,14 +73,14 @@ function addMessage(role, text, pending = false) {
 
 function renderMemories(memories = []) {
   if (!memories.length) {
-    memoryList.innerHTML = `<div class="empty-memory">这次回答没有读取历史记录。</div>`;
+    memoryList.innerHTML = `<div class="empty-memory">${locale.noMemory}</div>`;
     return;
   }
   memoryList.innerHTML = memories.map(item => `
     <div class="memory-item">
       <strong>《${escapeHtml(item.title)}》</strong>
-      <span>${item.kind === "film" ? "电影" : "书籍"} · ${item.rating ?? "未评分"}/10</span>
-      <p>${escapeHtml(item.reflection || "没有心得")}</p>
+      <span>${item.kind === "film" ? locale.film : locale.book} · ${item.rating ?? locale.unrated}/10</span>
+      <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
     </div>
   `).join("");
 }
@@ -46,7 +91,7 @@ async function sendMessage(text) {
   addMessage("user", clean);
   suggestions.classList.add("hidden");
   input.value = "";
-  const pending = addMessage("assistant", "正在读取相关记忆…", true);
+  const pending = addMessage("assistant", locale.readingMemory, true);
   try {
     const response = await fetch("/api/chat", {
       method: "POST",
@@ -61,7 +106,7 @@ async function sendMessage(text) {
     if (data.created_entry) await loadLibrary();
   } catch (error) {
     pending.remove();
-    addMessage("assistant", `抱歉，刚才没有处理成功：${error.message}`);
+    addMessage("assistant", `${locale.error}${error.message}`);
   }
 }
 
@@ -112,14 +157,14 @@ async function loadLibrary() {
   const { entries } = await response.json();
   const grid = document.querySelector("#library-grid");
   const empty = document.querySelector("#empty-library");
-  document.querySelector("#entry-count").textContent = `${entries.length} 条记录`;
+  document.querySelector("#entry-count").textContent = `${entries.length} ${locale.records}`;
   empty.classList.toggle("hidden", entries.length > 0);
   grid.innerHTML = entries.map(item => `
     <article class="entry-card">
-      <span class="entry-kind">${item.kind === "film" ? "FILM · 电影" : "BOOK · 书籍"}</span>
+      <span class="entry-kind">${item.kind === "film" ? `FILM · ${locale.film}` : `BOOK · ${locale.book}`}</span>
       <h3>《${escapeHtml(item.title)}》</h3>
-      <span class="rating">${item.rating == null ? "未评分" : `${item.rating}/10`}</span>
-      <p>${escapeHtml(item.reflection || "还没有写下心得。")}</p>
+      <span class="rating">${item.rating == null ? locale.unrated : `${item.rating}/10`}</span>
+      <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
       <div class="tags">${item.tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
     </article>
   `).join("");
@@ -135,6 +180,6 @@ async function loadHealth() {
   }
 }
 
+applyBrowserLocale();
 loadHealth();
 loadLibrary();
-
