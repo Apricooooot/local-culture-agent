@@ -8,10 +8,12 @@ from .database import CultureDatabase
 from .model import Model
 
 
-SYSTEM_PROMPT = """你是一个温和、诚实的私人书影音伙伴。
-用户的数据来自其本地资料库。不要虚构用户偏好，也不要声称记得没有提供的事情。
-回答要自然简洁；当引用记忆时，说明依据是哪一条记录。
-模型不能直接修改数据库，所有写入由 harness 完成。"""
+SYSTEM_PROMPT = """You are a warm, honest companion for books and films.
+Reply in the language used by the user's current message.
+User data comes from a local library. Never invent a preference or claim to
+remember something that was not provided. When using memory, identify the
+supporting record. The model cannot write to storage; all writes are performed
+and validated by the harness."""
 
 
 @dataclass
@@ -39,37 +41,52 @@ class CultureHarness:
         message = message.strip()
         if not message:
             raise ValueError("Message cannot be empty")
+        language = self._detect_language(message)
 
         parsed = self._parse_record(message)
         if parsed:
             entry = self.database.add_entry(parsed)
             rating = f"，{entry['rating']:g}/10" if entry["rating"] is not None else ""
-            reply = (
-                f"记好了：{self._kind_name(entry['kind'])}《{entry['title']}》{rating}。"
-                "你的原始感受已经完整保存在本地。"
-            )
-            if entry["tags"]:
-                reply += f" 我暂时提取了这些线索：{'、'.join(entry['tags'])}。"
+            if language == "zh":
+                reply = (
+                    f"记好了：{self._kind_name(entry['kind'], language)}《{entry['title']}》{rating}。"
+                    "你的原始感受已经完整保存在本地。"
+                )
+                if entry["tags"]:
+                    reply += f" 我暂时提取了这些线索：{'、'.join(entry['tags'])}。"
+            else:
+                rating_en = f", {entry['rating']:g}/10" if entry["rating"] is not None else ""
+                reply = (
+                    f"Saved locally: {self._kind_name(entry['kind'], language)} "
+                    f"《{entry['title']}》{rating_en}. Your original reflection "
+                    "has been preserved verbatim."
+                )
+                if entry["tags"]:
+                    reply += f" Initial signals: {', '.join(entry['tags'])}."
             return ChatResult(reply, "record", [entry], entry)
 
         intent = self._classify(message)
         memories = self._retrieve(message, intent)
 
         if intent == "library":
-            return ChatResult(self._library_reply(memories), intent, memories)
+            return ChatResult(self._library_reply(memories, language), intent, memories)
         if intent == "recommend":
-            return ChatResult(self._recommend_reply(memories), intent, memories)
+            return ChatResult(self._recommend_reply(memories, language), intent, memories)
         if intent == "profile":
-            return ChatResult(self._profile_reply(memories), intent, memories)
+            return ChatResult(self._profile_reply(memories, language), intent, memories)
 
         context = self._memory_context(memories)
         try:
             reply = self.model.complete(
                 SYSTEM_PROMPT,
-                [{"role": "user", "content": f"相关本地记忆：\n{context}\n\n用户：{message}"}],
+                [{"role": "user", "content": f"Relevant local memories:\n{context}\n\nUser: {message}"}],
             )
         except RuntimeError as exc:
-            reply = f"模型暂时不可用（{exc}），但你的本地资料库仍然可以正常记录和查询。"
+            reply = (
+                f"模型暂时不可用（{exc}），但你的本地资料库仍然可以正常记录和查询。"
+                if language == "zh"
+                else f"The model is unavailable ({exc}), but your local library still works."
+            )
         return ChatResult(reply, "chat", memories)
 
     @staticmethod
@@ -100,15 +117,21 @@ class CultureHarness:
 
     def _parse_record(self, message: str) -> dict[str, Any] | None:
         record_signal = any(
-            word in message
-            for word in ("看完", "读完", "记录", "打分", "评分", "看了", "读了")
+            word in message.lower()
+            for word in (
+                "看完", "读完", "记录", "打分", "评分", "看了", "读了",
+                "watched", "finished", "record", "rated", "read",
+            )
         )
         title_match = re.search(r"《([^》]{1,100})》", message)
         if not record_signal or not title_match:
             return None
 
         title = title_match.group(1).strip()
-        kind = "book" if any(word in message for word in ("书", "读完", "读了", "阅读")) else "film"
+        lowered = message.lower()
+        kind = "book" if any(
+            word in lowered for word in ("书", "读完", "读了", "阅读", "book", "read")
+        ) else "film"
         rating_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:分|/10)", message)
         rating = float(rating_match.group(1)) if rating_match else None
         if rating is not None and not 0 <= rating <= 10:
@@ -151,11 +174,19 @@ class CultureHarness:
 
     @staticmethod
     def _classify(message: str) -> str:
-        if any(word in message for word in ("推荐", "想看", "想读", "看什么", "读什么")):
+        lowered = message.lower()
+        if any(word in lowered for word in (
+            "推荐", "想看", "想读", "看什么", "读什么", "recommend", "suggest",
+        )):
             return "recommend"
-        if any(word in message for word in ("资料库", "记录过", "看过什么", "读过什么")):
+        if any(word in lowered for word in (
+            "资料库", "记录过", "看过什么", "读过什么", "library", "my records",
+        )):
             return "library"
-        if any(word in message for word in ("我喜欢", "我的偏好", "品味", "为什么觉得")):
+        if any(word in lowered for word in (
+            "我喜欢", "我的偏好", "品味", "为什么觉得", "my taste",
+            "my preferences", "what do i", "what i like",
+        )):
             return "profile"
         return "chat"
 
@@ -180,8 +211,13 @@ class CultureHarness:
             for item in memories
         )
 
-    def _recommend_reply(self, memories: list[dict[str, Any]]) -> str:
+    def _recommend_reply(self, memories: list[dict[str, Any]], language: str) -> str:
         if not memories:
+            if language == "en":
+                return (
+                    "I do not know your taste yet. Tell me one or two works you "
+                    "liked or disliked, or describe your mood, time, and desired direction."
+                )
             return (
                 "我还不了解你的口味。先告诉我一两部你喜欢或不喜欢的书/电影，"
                 "或者直接说此刻的心情、时长和想探索的方向。"
@@ -193,6 +229,16 @@ class CultureHarness:
         top_tags = list(dict.fromkeys(signals))[:4]
         evidence = "、".join(f"《{item['title']}》" for item in liked[:3]) or "最近的记录"
         preference = "、".join(top_tags) or "你记录中的情绪和主题"
+        if language == "en":
+            evidence_en = ", ".join(f"《{item['title']}》" for item in liked[:3]) or "your recent records"
+            preference_en = ", ".join(top_tags) or "the moods and themes in your journal"
+            return (
+                f"Based on {evidence_en}, I would prioritize works with "
+                f"{preference_en} while excluding titles already in your library. "
+                "The MVP does not have an external catalog yet, so I will not invent "
+                "titles. Once the provider layer lands, I will return three candidates "
+                "with a match reason and a possible downside for each."
+            )
         return (
             f"根据你对{evidence}的评价，我会优先寻找带有“{preference}”特质、"
             "同时避开你已经记录过的作品。当前 MVP 还没有接入外部作品目录，"
@@ -200,8 +246,10 @@ class CultureHarness:
         )
 
     @staticmethod
-    def _library_reply(memories: list[dict[str, Any]]) -> str:
+    def _library_reply(memories: list[dict[str, Any]], language: str) -> str:
         if not memories:
+            if language == "en":
+                return "Your local library is empty. Try: “I watched 《Arrival》, 9/10…”"
             return "你的本地资料库还是空的。可以从“我看完《作品名》，8分……”开始。"
         rows = [
             f"{'🎬' if item['kind'] == 'film' else '📚'}《{item['title']}》"
@@ -209,12 +257,18 @@ class CultureHarness:
             else f"{'🎬' if item['kind'] == 'film' else '📚'}《{item['title']}》"
             for item in memories[:8]
         ]
-        return "这是我找到的本地记录：\n" + "\n".join(f"• {row}" for row in rows)
+        prefix = "这是我找到的本地记录：" if language == "zh" else "Here are your local records:"
+        return prefix + "\n" + "\n".join(f"• {row}" for row in rows)
 
     @staticmethod
-    def _profile_reply(memories: list[dict[str, Any]]) -> str:
+    def _profile_reply(memories: list[dict[str, Any]], language: str) -> str:
         rated = [item for item in memories if item["rating"] is not None]
         if not rated:
+            if language == "en":
+                return (
+                    "There are not enough ratings to infer a preference yet. "
+                    "Any future inference will cite its evidence and remain correctable."
+                )
             return "现在还没有足够的评分来形成偏好判断。我的推断会始终注明依据，并允许你纠正。"
         tags: dict[str, list[str]] = {}
         for item in rated:
@@ -222,14 +276,36 @@ class CultureHarness:
                 for tag in item["tags"]:
                     tags.setdefault(tag, []).append(item["title"])
         if not tags:
+            if language == "en":
+                return (
+                    "I have rating facts, but no stable theme signal yet. "
+                    "I will not label your taste prematurely."
+                )
             return "目前只有评分事实，尚没有稳定的主题偏好信号；我不会过早给你贴标签。"
         details = [
             f"“{tag}”（依据：{'、'.join('《' + title + '》' for title in titles[:3])}）"
             for tag, titles in list(tags.items())[:5]
         ]
+        if language == "en":
+            details_en = [
+                f"{tag} (evidence: {', '.join('《' + title + '》' for title in titles[:3])})"
+                for tag, titles in list(tags.items())[:5]
+            ]
+            return (
+                "Current preference signals: " + "; ".join(details_en)
+                + ". These are correctable inferences, not permanent labels."
+            )
         return "目前比较明显的偏好线索是：" + "；".join(details) + "。这些只是可纠正的推断。"
 
     @staticmethod
-    def _kind_name(kind: str) -> str:
+    def _kind_name(kind: str, language: str = "zh") -> str:
+        if language == "en":
+            return "book" if kind == "book" else "film"
         return "书籍" if kind == "book" else "电影"
 
+    @staticmethod
+    def _detect_language(message: str) -> str:
+        # Language is scoped to the current turn; users can switch naturally
+        # without changing a global profile setting.
+        cjk_count = sum("\u4e00" <= character <= "\u9fff" for character in message)
+        return "zh" if cjk_count >= 2 else "en"

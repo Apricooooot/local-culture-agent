@@ -26,6 +26,8 @@ class OpenAICompatibleModel:
         return self.model
 
     def complete(self, system: str, messages: list[dict[str, str]]) -> str:
+        # Remote providers are opt-in. The harness is responsible for retrieving
+        # only the minimum local context required for this request.
         payload = json.dumps(
             {
                 "model": self.model,
@@ -56,6 +58,13 @@ class OfflineModel:
     def complete(self, system: str, messages: list[dict[str, str]]) -> str:
         del system
         last = messages[-1]["content"] if messages else ""
+        is_chinese = any("\u4e00" <= character <= "\u9fff" for character in last)
+        if not is_chinese:
+            return (
+                "I am running in offline mode. I can still record, search, and "
+                "organize your local book and film memories. Tell me a little "
+                "more about what you want, and I will use only your local records."
+            )
         return (
             "我现在运行在离线模式，仍然可以替你记录、搜索和整理书影音记忆。"
             f"关于“{last[:60]}”，如果你告诉我更多具体偏好，我也可以结合本地记录继续聊。"
@@ -71,4 +80,3 @@ def model_from_environment() -> Model:
             api_key=os.getenv("CULTURE_AGENT_API_KEY", ""),
         )
     return OfflineModel()
-

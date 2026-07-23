@@ -56,6 +56,8 @@ class CultureDatabase:
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
+        # Connections are intentionally short-lived so the local database can
+        # be backed up or exported without coordinating a long-running pool.
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         try:
@@ -65,6 +67,8 @@ class CultureDatabase:
             connection.close()
 
     def add_entry(self, entry: dict[str, Any]) -> dict[str, Any]:
+        # User-authored reflections are stored verbatim. Derived tags live in a
+        # separate field and can be corrected without rewriting the source text.
         now = datetime.now(timezone.utc).isoformat()
         tags = sorted({str(tag).strip() for tag in entry.get("tags", []) if str(tag).strip()})
         with self.connect() as connection:
@@ -141,4 +145,3 @@ class CultureDatabase:
         result = dict(row)
         result["tags"] = json.loads(result.pop("tags_json"))
         return result
-
