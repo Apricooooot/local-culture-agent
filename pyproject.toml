@@ -1,0 +1,23 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "local-culture-agent"
+version = "0.1.0"
+description = "A local-first AI companion for books and films."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Apricooooot" }]
+keywords = ["ai-agent", "local-first", "books", "films", "recommendations"]
+
+[project.scripts]
+culture-agent = "culture_agent.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["culture_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
