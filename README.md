@@ -3,6 +3,10 @@
 A local-first AI companion that remembers what you read and watch, helps you
 record ratings and reflections, and recommends what to explore next.
 
+> **Project status:** early, usable MVP. The local journal works today.
+> External book and film catalog integrations are documented but not yet
+> implemented.
+
 The product is built around a **model + harness** architecture:
 
 - the **model** understands conversation and writes natural responses;
@@ -20,6 +24,7 @@ The product is built around a **model + harness** architecture:
 - Explainable memory: see which records informed a response
 - Optional OpenAI-compatible model support, including Ollama
 - A deterministic offline mode that requires no API key
+- Replies that follow the language used in the current message
 
 ## Quick start
 
@@ -31,8 +36,8 @@ python -m culture_agent.server
 
 Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
-The database is created at `data/culture_agent.db`. Nothing is uploaded by
-default.
+The database is created at `data/culture_agent.db`. Ratings, reflections,
+preference signals, and retrieved memories stay on the device by default.
 
 ### Use Ollama
 
@@ -50,14 +55,17 @@ Any OpenAI-compatible provider can be used by setting `CULTURE_AGENT_API_KEY`.
 ## Try these conversations
 
 ```text
-我看完《一一》，9分。喜欢它从日常里观察人生，但觉得有些段落略长。
+I watched 《Arrival》, 9/10. I loved its quiet approach to language and grief.
 
-记录一本书：卡尔维诺的《看不见的城市》，8.5分，像在读很多关于城市的梦。
+I finished the book 《Invisible Cities》, 8.5/10. Every city felt like a dream.
 
-今天有点累，想看一部温柔、不要太甜的电影。
+Recommend a gentle film for a tired evening.
 
-我最近都喜欢什么？为什么？
+What do I seem to enjoy, and what records support that?
 ```
+
+The same interactions work in Chinese. Conversation language is chosen from
+the user's current message rather than from the README or source-code language.
 
 ## Architecture
 
@@ -77,6 +85,27 @@ SQLite + FTS
 
 The model never writes directly to the database. It proposes or interprets an
 action; the harness validates it and calls a typed storage method.
+
+## Metadata sources
+
+The current MVP does **not** fetch external catalog metadata yet. The planned
+provider layer is:
+
+- **Books:** Open Library Search, Works/Edition, and Covers APIs. It is a good
+  fit for low-volume, real-time lookup in an open-source project. It should not
+  be treated as an unlimited third-party database or used for bulk scraping.
+- **Films and TV:** TMDB API. Each installation should provide its own API
+  credential. The UI must include TMDB's required attribution before this
+  integration is released.
+- **User-entered metadata:** always remains available as a fallback, so the
+  journal is useful offline and is never locked to one catalog provider.
+
+Provider results should be cached locally with their provider ID, source URL,
+locale, and retrieval time. Provider facts must remain separate from user
+ratings and model-generated preference inferences.
+
+See [`docs/METADATA_SOURCES.md`](docs/METADATA_SOURCES.md) for the decision
+record and integration boundaries.
 
 ## API
 
@@ -102,7 +131,17 @@ python -m unittest discover -s tests -v
 
 ## Privacy
 
-This is an early MVP. Local records stay on the device, but messages are sent
-to a remote provider if you explicitly configure one. Offline mode makes no
-model network requests.
+Local-first is a product boundary, not just a deployment option:
+
+- the SQLite database, ratings, reflections, preference memories, and future
+  embeddings remain local by default;
+- offline mode makes no model network requests;
+- if a remote model is explicitly configured, only the prompt and retrieved
+  context needed for that request are sent to that provider;
+- secrets belong in environment variables and are excluded from Git;
+- catalog lookups send search terms to the configured metadata provider, but
+  never send the user's journal or preference profile.
+
+Before a production release, the app will also expose local export, deletion,
+memory inspection, and per-provider consent controls.
 
