@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from culture_agent.catalog import CatalogItem
 from culture_agent.database import CultureDatabase
 from culture_agent.harness import CultureHarness
 from culture_agent.model import OfflineModel
@@ -14,11 +15,36 @@ class RecordingModel:
 
     def __init__(self) -> None:
         self.messages: list[dict[str, str]] = []
+        self.thinking = False
+        self.system = ""
 
-    def complete(self, system: str, messages: list[dict[str, str]]) -> str:
-        del system
+    def complete(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        thinking: bool = False,
+    ) -> str:
+        self.system = system
         self.messages = messages
+        self.thinking = thinking
         return "这里有五部适合你此刻心情的电影。"
+
+
+class StubCatalog:
+    def candidates(self, message: str, kind: str, limit: int = 12) -> list[CatalogItem]:
+        del message, limit
+        return [
+            CatalogItem(
+                provider="wikidata",
+                provider_id="Q147235",
+                title="Legally Blonde",
+                kind=kind,
+                year=2001,
+                creator="Robert Luketic",
+                source_url="https://www.wikidata.org/wiki/Q147235",
+            )
+        ]
 
 
 class HarnessTests(unittest.TestCase):
@@ -116,6 +142,40 @@ class HarnessTests(unittest.TestCase):
             CultureHarness._clean_model_reply(reply, message),
             "可以看看《律政俏佳人》。",
         )
+
+    def test_thinking_policy_is_task_specific(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "thinking.db")
+        harness = CultureHarness(database, model)
+
+        result = harness.chat("请综合分析这些作品之间的共同主题")
+
+        self.assertTrue(result.thinking_used)
+        self.assertTrue(model.thinking)
+
+    def test_catalog_candidates_ground_recommendation_prompt(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "catalog.db")
+        harness = CultureHarness(database, model, StubCatalog())
+
+        result = harness.chat("推荐一部2000年后的轻松喜剧电影")
+
+        self.assertEqual(result.catalog_items[0].provider_id, "Q147235")
+        self.assertIn("Q147235", model.system)
+        self.assertFalse(model.thinking)
+
+    def test_complex_profile_uses_thinking_with_grounded_memories(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "profile-thinking.db")
+        harness = CultureHarness(database, model)
+        harness.chat("我看完《花样年华》，9分，喜欢克制的爱情。")
+
+        result = harness.chat("请深入分析我的偏好和其中可能存在的矛盾")
+
+        self.assertEqual(result.intent, "profile")
+        self.assertTrue(result.thinking_used)
+        self.assertTrue(model.thinking)
+        self.assertIn("《花样年华》", model.system)
 
 
 if __name__ == "__main__":
