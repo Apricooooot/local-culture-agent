@@ -1,3 +1,4 @@
+
 # Local Culture Agent
 
 A local-first AI companion that remembers what you read and watch, helps you
@@ -238,7 +239,9 @@ python scripts/import_imdb.py `
 ```
 
 The generated database remains under `data/` and must not be committed or
-redistributed. The importer never downloads IMDb data automatically.
+redistributed. The importer never downloads IMDb data automatically. It
+prepares a local database for a future opt-in IMDb candidate adapter; the
+current recommendation path uses Open Library and Wikidata.
 
 TMDB is not enabled by default. Its current API terms contain restrictions for
 AI/LLM/chatbot applications, so this project does not depend on it without
