@@ -32,7 +32,13 @@ class RecordingModel:
 
 
 class StubCatalog:
-    def candidates(self, message: str, kind: str, limit: int = 12) -> list[CatalogItem]:
+    def candidates(
+        self,
+        message: str,
+        kind: str,
+        limit: int = 12,
+        language: str = "en",
+    ) -> list[CatalogItem]:
         del message, limit
         return [
             CatalogItem(
@@ -65,8 +71,8 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.created_entry["title"], "一一")
         self.assertEqual(result.created_entry["kind"], "film")
         self.assertEqual(result.created_entry["rating"], 9)
-        self.assertIn("人生观察", result.created_entry["tags"])
-        self.assertIn("慢节奏", result.created_entry["tags"])
+        self.assertIn("everyday_life", result.created_entry["tags"])
+        self.assertIn("slow_paced", result.created_entry["tags"])
 
     def test_book_detection_and_creator(self) -> None:
         result = self.harness.chat(
@@ -101,6 +107,51 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.created_entry["title"], "Arrival")
         self.assertEqual(result.created_entry["kind"], "film")
         self.assertIn("Saved locally", result.reply)
+
+    def test_unquoted_english_record_is_parsed_and_canonicalized(self) -> None:
+        result = self.harness.chat(
+            "I watched Arrival, 9/10. I loved its restrained science-fiction atmosphere."
+        )
+        self.assertEqual(result.intent, "record")
+        self.assertEqual(result.created_entry["title"], "Arrival")
+        self.assertEqual(result.created_entry["tags"], ["restrained", "science_fiction"])
+        self.assertIn("restrained", result.reply)
+        self.assertIn("science fiction", result.reply)
+
+    def test_unquoted_english_book_is_detected(self) -> None:
+        result = self.harness.chat(
+            "I finished reading Invisible Cities, 8.5/10. It felt gentle and dreamlike."
+        )
+        self.assertEqual(result.created_entry["title"], "Invisible Cities")
+        self.assertEqual(result.created_entry["kind"], "book")
+        self.assertIn("gentle", result.created_entry["tags"])
+
+    def test_legacy_localized_tags_are_read_as_canonical_ids(self) -> None:
+        self.harness.database.add_entry({
+            "title": "Legacy",
+            "creator": "",
+            "kind": "film",
+            "status": "finished",
+            "rating": 8,
+            "reflection": "old record",
+            "tags": ["科幻"],
+        })
+        self.assertEqual(
+            self.harness.database.list_entries()[0]["tags"],
+            ["science_fiction"],
+        )
+
+    def test_english_memory_context_uses_english_tag_labels(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "english-context.db")
+        harness = CultureHarness(database, model)
+        harness.chat("I watched Arrival, 9/10. Restrained science fiction.")
+
+        harness.chat("Tell me more about why it worked for me.")
+
+        context = model.messages[0]["content"]
+        self.assertIn("tags: restrained, science fiction", context)
+        self.assertNotIn("标签", context)
 
     def test_language_can_switch_per_turn(self) -> None:
         english = self.harness.chat("What do I seem to like?")
@@ -149,6 +200,17 @@ class HarnessTests(unittest.TestCase):
         harness = CultureHarness(database, model)
 
         result = harness.chat("请综合分析这些作品之间的共同主题")
+
+        self.assertTrue(result.thinking_used)
+        self.assertTrue(model.thinking)
+
+    def test_english_complex_request_enables_thinking(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "thinking-en.db")
+        harness = CultureHarness(database, model)
+        harness.chat("I watched Arrival, 9/10. Restrained science fiction.")
+
+        result = harness.chat("How has my taste changed over time?")
 
         self.assertTrue(result.thinking_used)
         self.assertTrue(model.thinking)
