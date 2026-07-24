@@ -81,8 +81,12 @@ class CultureHarness:
             raise ValueError("Message cannot be empty")
         recent_history = self._normalize_history(history)
         language = detect_language(message)
+        intent = classify_intent(message)
 
-        parsed = self._parse_record(message, language)
+        # Explicit conversational intents take precedence over heuristic
+        # unquoted-title parsing. This prevents phrases such as "a film that
+        # makes me happy after watching it" from becoming a fake record.
+        parsed = self._parse_record(message, language) if intent == "chat" else None
         if parsed:
             entry = self.database.add_entry(parsed)
             rating = (
@@ -108,7 +112,6 @@ class CultureHarness:
                 )
             return ChatResult(reply, "record", [entry], entry)
 
-        intent = classify_intent(message)
         memories = self._retrieve(message, intent)
 
         if intent == "library":
@@ -255,8 +258,6 @@ class CultureHarness:
     ) -> str:
         context = self._memory_context(memories, language)
         candidates = catalog_items or []
-        if self.catalog and not candidates:
-            return translate(language, "catalog_empty")
         candidate_context = (
             "\n".join(
                 f"- [{item.provider}:{item.provider_id}] {item.title}"
@@ -265,7 +266,14 @@ class CultureHarness:
                 for item in candidates
             )
             if candidates
-            else "No catalog provider is configured; clearly label any general-knowledge suggestions as unverified."
+            else (
+                "The configured catalogs returned no verified candidates. "
+                "Continue with real, widely known general-knowledge suggestions "
+                "and clearly label them as unverified."
+                if self.catalog
+                else "No catalog provider is configured; clearly label any "
+                "general-knowledge suggestions as unverified."
+            )
         )
         recommendation_system = f"""{SYSTEM_PROMPT}
 
