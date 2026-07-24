@@ -41,7 +41,12 @@ class CultureRequestHandler(BaseHTTPRequestHandler):
         try:
             payload = self.read_json()
             if path == "/api/chat":
-                self.send_json(self.harness.chat(str(payload.get("message", ""))).as_dict())
+                self.send_json(
+                    self.harness.chat(
+                        str(payload.get("message", "")),
+                        payload.get("history"),
+                    ).as_dict()
+                )
                 return
             if path == "/api/entries":
                 self.send_json(self.harness.add_entry(payload), HTTPStatus.CREATED)
