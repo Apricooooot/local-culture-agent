@@ -6,6 +6,7 @@ const memoryList = document.querySelector("#memory-list");
 const chatView = document.querySelector("#chat-view");
 const libraryView = document.querySelector("#library-view");
 const isChineseUI = navigator.language.toLowerCase().startsWith("zh");
+let conversationHistory = [];
 
 const locale = {
   noMemory: isChineseUI ? "这次回答没有读取历史记录。" : "This reply did not read historical records.",
@@ -96,12 +97,20 @@ async function sendMessage(text) {
     const response = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: clean })
+      body: JSON.stringify({
+        message: clean,
+        history: conversationHistory.slice(-12)
+      })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "请求失败");
     pending.remove();
     addMessage("assistant", data.reply);
+    conversationHistory.push(
+      { role: "user", content: clean },
+      { role: "assistant", content: data.reply }
+    );
+    conversationHistory = conversationHistory.slice(-12);
     renderMemories(data.memories);
     if (data.created_entry) await loadLibrary();
   } catch (error) {
@@ -132,6 +141,7 @@ suggestions.addEventListener("click", event => {
 });
 
 document.querySelector("#new-chat").addEventListener("click", () => {
+  conversationHistory = [];
   messages.querySelectorAll(".message:not(:first-child)").forEach(node => node.remove());
   suggestions.classList.remove("hidden");
   renderMemories([]);
@@ -183,3 +193,4 @@ async function loadHealth() {
 applyBrowserLocale();
 loadHealth();
 loadLibrary();
+
