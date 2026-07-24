@@ -97,6 +97,7 @@ $env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434"
 $env:CULTURE_AGENT_MODEL_NAME="qwen3:8b"
 $env:CULTURE_AGENT_CATALOG_PROVIDERS="openlibrary,wikidata"
 $env:CULTURE_AGENT_CATALOG_CONTACT="you@example.com"
+$env:CULTURE_AGENT_CATALOG_TIMEOUT="8"
 python -m culture_agent.server
 ```
 
@@ -110,6 +111,7 @@ export CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434"
 export CULTURE_AGENT_MODEL_NAME="qwen3:8b"
 export CULTURE_AGENT_CATALOG_PROVIDERS="openlibrary,wikidata"
 export CULTURE_AGENT_CATALOG_CONTACT="you@example.com"
+export CULTURE_AGENT_CATALOG_TIMEOUT="8"
 python -m culture_agent.server
 ```
 
@@ -123,6 +125,9 @@ chat, catalog filtering, and recommendations use `think: false`. Complex
 comparisons, cross-record synthesis, trend analysis, and review-style prompts
 use `think: true`. Catalog providers are opt-in because search terms leave the
 device; omit `CULTURE_AGENT_CATALOG_PROVIDERS` for a fully offline session.
+Catalog lookups time out after eight seconds by default so metadata services do
+not block the conversation for too long. Adjust
+`CULTURE_AGENT_CATALOG_TIMEOUT` if your connection needs a different limit.
 
 ### Other local model servers
 
@@ -314,9 +319,12 @@ action; the harness validates it and calls a typed storage method.
 
 Open Library and Wikidata are implemented as opt-in catalog providers.
 Recommendations receive provider IDs and source URLs. When verified candidates
-are present, the model is restricted to that candidate set; if no candidate is
-returned, the harness reports that instead of asking the model to invent one.
-User-entered metadata remains available offline.
+are present, the model is restricted to that candidate set. If a provider is
+unavailable or returns no candidate, the model may fall back to well-known
+general knowledge with an unverified label. The harness removes duplicate
+recommendations and the browser makes each returned title clickable: verified
+items use their catalog source URL, while fallback items use a language-matched
+Wikipedia search link. User-entered metadata remains available offline.
 
 See [`docs/METADATA_SOURCES.md`](docs/METADATA_SOURCES.md) for licensing,
 IMDb import instructions, provider boundaries, and the TMDB decision.
@@ -326,7 +334,7 @@ IMDb import instructions, provider boundaries, and the TMDB decision.
 - `GET /api/health`
 - `GET /api/library`
 - `POST /api/chat` with `{ "message": "...", "history": [...] }`; responses
-  include `thinking_used` and grounded `catalog_items`
+  include `thinking_used`, grounded `catalog_items`, and safe title `links`
 - `POST /api/entries`
 - `DELETE /api/entries/:id`
 
