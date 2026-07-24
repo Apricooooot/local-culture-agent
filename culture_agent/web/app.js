@@ -104,7 +104,7 @@ function renderMemories(memories = []) {
   }
   memoryList.innerHTML = memories.map(item => `
     <div class="memory-item">
-      <strong>《${escapeHtml(item.title)}》</strong>
+      <strong>${escapeHtml(item.title)}</strong>
       <span>${item.kind === "film" ? locale.film : locale.book} · ${item.rating ?? locale.unrated}/10</span>
       <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
     </div>
@@ -197,7 +197,7 @@ async function loadLibrary() {
   grid.innerHTML = entries.map(item => `
     <article class="entry-card">
       <span class="entry-kind">${item.kind === "film" ? `FILM · ${locale.film}` : `BOOK · ${locale.book}`}</span>
-      <h3>《${escapeHtml(item.title)}》</h3>
+      <h3>${escapeHtml(item.title)}</h3>
       <span class="rating">${item.rating == null ? locale.unrated : `${item.rating}/10`}</span>
       <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
       <div class="tags">${item.tags.map(tag => `<span>${escapeHtml(localizedTag(tag))}</span>`).join("")}</div>
