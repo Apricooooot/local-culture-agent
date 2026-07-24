@@ -198,7 +198,6 @@ it commercially.
 
 | Model | Free for local use? | License | Why it fits this project | Suggested starting point |
 | --- | --- | --- | --- | --- |
-| [Qwen3 4B](https://huggingface.co/Qwen/Qwen3-4B) | Yes; no model or per-request fee | [Apache 2.0](https://qwenlm.github.io/blog/qwen3/) | Small, multilingual, and a sensible first test on modest hardware | A 4-bit quantization through Ollama, LM Studio, or llama.cpp |
 | [Qwen3 8B](https://huggingface.co/Qwen/Qwen3-8B) | Yes; no model or per-request fee | [Apache 2.0](https://qwenlm.github.io/blog/qwen3/) | Stronger multilingual conversation, instruction following, and agent-oriented behavior | A 4-bit quantization when the machine can comfortably run an 8B model |
 | [Gemma 3 4B IT](https://huggingface.co/google/gemma-3-4b-it) | Yes; no model or per-request fee, but you must accept Google's terms | [Gemma Terms of Use](https://ai.google.dev/gemma/terms), including use restrictions; this is not an Apache/MIT-style license | Lightweight instruction model with broad multilingual support | Good alternative when a compatible runner provides an accepted-terms build |
 | [Ministral 3 8B Instruct](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512-GGUF) | Yes; no model or per-request fee | [Apache 2.0](https://huggingface.co/mistralai/Ministral-3-8B-Instruct-2512-GGUF#license) | Multilingual support and an edge-deployment focus | A GGUF quantization with llama.cpp or LM Studio |
@@ -207,7 +206,7 @@ Model quality and memory usage depend on quantization, context size, backend,
 and hardware. A smaller model that runs reliably is a better starting point
 than a larger model that continuously swaps memory. For this agent's
 Chinese/English conversation and constraint-following workload, Qwen3 8B is the
-recommended local baseline; Qwen3 4B is best treated as a low-resource demo.
+recommended local baseline.
 
 ### Grounded book and film data
 
