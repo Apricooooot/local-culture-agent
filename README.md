@@ -21,7 +21,8 @@ The product is built around a **model + harness** architecture:
 - Searchable local library
 - Recommendations grounded in your own ratings and tags
 - Explainable memory: see which records informed a response
-- Native Ollama support with per-request thinking control
+- LangChain model and read-only tool abstractions
+- Ollama support through LangChain with per-request thinking control
 - Optional OpenAI-compatible model support
 - Grounded catalog candidates from Open Library and Wikidata
 - A deterministic offline mode that requires no API key
@@ -29,16 +30,15 @@ The product is built around a **model + harness** architecture:
 
 ## Quick start
 
-Python 3.11 or newer is the only runtime requirement. The default offline mode
-does not download a model, call a remote API, or require an API key.
+Python 3.11 or newer is required. The default offline mode does not download a
+model, call a remote API, or require an API key.
 
 ```bash
 git clone https://github.com/Apricooooot/local-culture-agent.git
 cd local-culture-agent
 ```
 
-Creating a virtual environment is optional because the MVP uses only the Python
-standard library, but it keeps future dependencies isolated:
+Create and activate a virtual environment:
 
 ```bash
 python -m venv .venv
@@ -54,6 +54,12 @@ Activate it:
 ```bash
 # macOS or Linux
 source .venv/bin/activate
+```
+
+Install the project and its LangChain integrations:
+
+```bash
+python -m pip install -e .
 ```
 
 Start the app:
@@ -116,15 +122,17 @@ python -m culture_agent.server
 ```
 
 If Ollama is installed but the service is not running, start it with
-`ollama serve`. The app uses Ollama's native
-[`/api/chat`](https://docs.ollama.com/api/chat) endpoint so the harness can
-control thinking on each request. No API key is required.
+`ollama serve`. The app uses LangChain's
+[`ChatOllama`](https://docs.langchain.com/oss/python/integrations/chat/ollama)
+integration and retains per-request thinking control. No API key is required.
 
-The native Ollama adapter chooses thinking per request. Recording, ordinary
-chat, catalog filtering, and recommendations use `think: false`. Complex
+The LangChain Ollama adapter chooses thinking per request. Recording, ordinary
+chat, catalog filtering, and recommendations disable reasoning. Complex
 comparisons, cross-record synthesis, trend analysis, and review-style prompts
-use `think: true`. Catalog providers are opt-in because search terms leave the
-device; omit `CULTURE_AGENT_CATALOG_PROVIDERS` for a fully offline session.
+enable reasoning. Set `CULTURE_AGENT_MODEL_PROVIDER=ollama-native` only if you
+need the legacy dependency-free Ollama adapter. Catalog providers are opt-in
+because search terms leave the device; omit `CULTURE_AGENT_CATALOG_PROVIDERS`
+for a fully offline session.
 Catalog lookups time out after eight seconds by default so metadata services do
 not block the conversation for too long. Adjust
 `CULTURE_AGENT_CATALOG_TIMEOUT` if your connection needs a different limit.
@@ -304,16 +312,31 @@ Browser chat UI
 HTTP/JSON API
       |
 CultureHarness
-  |       |        |
-router  memory   model adapter
-  |       |        |
-validated tools  optional local/cloud LLM
-      |
+  |              |
+deterministic    LangChain adapters
+router/guards    |              |
+  |          read-only tools  ChatOllama
+validated write  |              |
+  |          SQLite/catalogs  Qwen or other LLM
 SQLite + FTS
 ```
 
 The model never writes directly to the database. It proposes or interprets an
 action; the harness validates it and calls a typed storage method.
+
+### Why LangChain plus a custom harness?
+
+LangChain supplies recognizable, provider-neutral model and tool abstractions.
+The custom harness retains the product-specific guarantees: deterministic
+intent routing, per-request reasoning policy, local-memory selection,
+internationalization, catalog grounding, recommendation deduplication, and
+validated writes. Only read operations are registered as LangChain tools.
+Creating, changing, or deleting a local record remains ordinary application
+code behind explicit validation.
+
+This separation keeps the project portable without handing privacy-sensitive
+storage decisions to the model. The legacy native Ollama adapter remains
+available as a troubleshooting fallback.
 
 ## Metadata sources
 
