@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from .database import CultureDatabase
+from .catalog import catalog_from_environment
 from .harness import CultureHarness
 from .model import model_from_environment
 
@@ -105,7 +106,11 @@ def create_server(
     port: int = 8765,
     database_path: str | Path = "data/culture_agent.db",
 ) -> ThreadingHTTPServer:
-    harness = CultureHarness(CultureDatabase(database_path), model_from_environment())
+    harness = CultureHarness(
+        CultureDatabase(database_path),
+        model_from_environment(),
+        catalog_from_environment(),
+    )
     handler = type("ConfiguredCultureHandler", (CultureRequestHandler,), {"harness": harness})
     return ThreadingHTTPServer((host, port), handler)
 
