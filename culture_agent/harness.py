@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
 
+from .catalog import CatalogHub, CatalogItem
 from .database import CultureDatabase
 from .model import Model
 
@@ -25,6 +27,8 @@ class ChatResult:
     intent: str
     memories: list[dict[str, Any]]
     created_entry: dict[str, Any] | None = None
+    thinking_used: bool = False
+    catalog_items: list[CatalogItem] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -32,13 +36,23 @@ class ChatResult:
             "intent": self.intent,
             "memories": self.memories,
             "created_entry": self.created_entry,
+            "thinking_used": self.thinking_used,
+            "catalog_items": [
+                item.as_dict() for item in (self.catalog_items or [])
+            ],
         }
 
 
 class CultureHarness:
-    def __init__(self, database: CultureDatabase, model: Model) -> None:
+    def __init__(
+        self,
+        database: CultureDatabase,
+        model: Model,
+        catalog: CatalogHub | None = None,
+    ) -> None:
         self.database = database
         self.model = model
+        self.catalog = catalog
 
     def chat(
         self,
@@ -79,20 +93,37 @@ class CultureHarness:
         if intent == "library":
             return ChatResult(self._library_reply(memories, language), intent, memories)
         if intent == "recommend":
+            catalog_items = self._catalog_candidates(message)
             return ChatResult(
                 self._recommend_reply(
                     message,
                     memories,
                     language,
                     recent_history,
+                    catalog_items,
                 ),
                 intent,
                 memories,
+                catalog_items=catalog_items,
             )
         if intent == "profile":
+            thinking = self._should_think(intent, message)
+            if thinking and memories:
+                return ChatResult(
+                    self._profile_model_reply(
+                        message,
+                        memories,
+                        language,
+                        recent_history,
+                    ),
+                    intent,
+                    memories,
+                    thinking_used=True,
+                )
             return ChatResult(self._profile_reply(memories, language), intent, memories)
 
         context = self._memory_context(memories)
+        thinking = self._should_think(intent, message)
         try:
             reply = self.model.complete(
                 SYSTEM_PROMPT,
@@ -104,6 +135,7 @@ class CultureHarness:
                     *recent_history,
                     {"role": "user", "content": message},
                 ],
+                thinking=thinking,
             )
             reply = self._clean_model_reply(reply, message)
         except RuntimeError as exc:
@@ -112,7 +144,7 @@ class CultureHarness:
                 if language == "zh"
                 else f"The model is unavailable ({exc}), but your local library still works."
             )
-        return ChatResult(reply, "chat", memories)
+        return ChatResult(reply, "chat", memories, thinking_used=thinking)
 
     @staticmethod
     def validate_entry(entry: dict[str, Any]) -> dict[str, Any]:
@@ -242,8 +274,26 @@ class CultureHarness:
         memories: list[dict[str, Any]],
         language: str,
         history: list[dict[str, str]] | None = None,
+        catalog_items: list[CatalogItem] | None = None,
     ) -> str:
         context = self._memory_context(memories)
+        candidates = catalog_items or []
+        if self.catalog and not candidates:
+            return (
+                "开放资料库没有返回符合条件的可靠候选。你可以放宽年份、类型或时长条件后重试。"
+                if language == "zh"
+                else "The open catalogs returned no reliable candidates. Try relaxing the year, genre, or runtime constraints."
+            )
+        candidate_context = (
+            "\n".join(
+                f"- [{item.provider}:{item.provider_id}] {item.title}"
+                f" ({item.year or 'year unknown'}), creator: {item.creator or 'unknown'},"
+                f" source: {item.source_url}"
+                for item in candidates
+            )
+            if candidates
+            else "No catalog provider is configured; clearly label any general-knowledge suggestions as unverified."
+        )
         recommendation_system = f"""{SYSTEM_PROMPT}
 
 For this recommendation request, preserve every constraint established in the
@@ -257,7 +307,13 @@ detail. Omit any candidate whose identity or basic facts you are unsure about.
 Do not discuss catalog availability unless the user asks about it.
 
 Relevant local records:
-{context}"""
+{context}
+
+Verified catalog candidates:
+{candidate_context}
+
+When verified candidates are present, recommend only titles from that list and
+preserve their IDs, years, creators, and source URLs exactly."""
         try:
             reply = self.model.complete(
                 recommendation_system,
@@ -265,6 +321,7 @@ Relevant local records:
                     *self._normalize_history(history),
                     {"role": "user", "content": message},
                 ],
+                thinking=False,
             )
             return self._clean_model_reply(reply, message)
         except RuntimeError as exc:
@@ -277,6 +334,31 @@ Relevant local records:
                 f"The recommendation model is unavailable ({exc}). Your local "
                 "records are safe; confirm that Ollama is running and try again."
             )
+
+    def _catalog_candidates(self, message: str) -> list[CatalogItem]:
+        if not self.catalog:
+            return []
+        kind = "book" if any(
+            token in message.lower()
+            for token in ("书", "小说", "阅读", "读", "book", "novel", "read")
+        ) else "film"
+        try:
+            return self.catalog.candidates(message, kind, limit=12)
+        except (OSError, ValueError, json.JSONDecodeError):
+            return []
+
+    @staticmethod
+    def _should_think(intent: str, message: str) -> bool:
+        if intent in {"record", "library", "recommend"}:
+            return False
+        lowered = message.lower()
+        complex_signals = (
+            "比较", "对比", "综合", "深入分析", "年度总结", "年度回顾",
+            "复盘", "共同主题", "变化趋势", "矛盾", "联系起来",
+            "compare", "contrast", "analyze deeply", "year in review",
+            "overall pattern", "trend", "conflicting preferences",
+        )
+        return any(signal in lowered for signal in complex_signals)
 
     @staticmethod
     def _normalize_history(
@@ -357,6 +439,32 @@ Relevant local records:
                 + ". These are correctable inferences, not permanent labels."
             )
         return "目前比较明显的偏好线索是：" + "；".join(details) + "。这些只是可纠正的推断。"
+
+    def _profile_model_reply(
+        self,
+        message: str,
+        memories: list[dict[str, Any]],
+        language: str,
+        history: list[dict[str, str]],
+    ) -> str:
+        context = self._memory_context(memories)
+        system = f"""{SYSTEM_PROMPT}
+
+Analyze patterns across the user's local records. Separate direct facts from
+inferences, cite the supporting titles for every preference claim, discuss
+contradictory evidence, and avoid permanent personality labels.
+
+Local records:
+{context}"""
+        try:
+            reply = self.model.complete(
+                system,
+                [*history, {"role": "user", "content": message}],
+                thinking=True,
+            )
+            return self._clean_model_reply(reply, message)
+        except RuntimeError:
+            return self._profile_reply(memories, language)
 
     @staticmethod
     def _kind_name(kind: str, language: str = "zh") -> str:
