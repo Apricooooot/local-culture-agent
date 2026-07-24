@@ -53,6 +53,18 @@ class StubCatalog:
         ]
 
 
+class EmptyCatalog:
+    def candidates(
+        self,
+        message: str,
+        kind: str,
+        limit: int = 12,
+        language: str = "en",
+    ) -> list[CatalogItem]:
+        del message, kind, limit, language
+        return []
+
+
 class HarnessTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -190,6 +202,34 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.intent, "recommend")
         self.assertEqual(result.reply, "这里有五部适合你此刻心情的电影。")
         self.assertEqual(model.messages[-1]["content"], "今天很累，推荐五部轻松好笑的小妞电影")
+
+    def test_recommendation_language_is_not_misparsed_as_a_record(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "routing.db")
+        harness = CultureHarness(database, model)
+        message = (
+            "最近找工作好累，想看点轻松愉悦搞笑的小妞电影，"
+            "看了很开心的那种，给我推荐五部吧，不想看太老的"
+        )
+
+        result = harness.chat(message)
+
+        self.assertEqual(result.intent, "recommend")
+        self.assertIsNone(result.created_entry)
+        self.assertEqual(database.list_entries(), [])
+        self.assertEqual(model.messages[-1]["content"], message)
+
+    def test_empty_catalog_falls_back_to_model_recommendations(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "catalog-fallback.db")
+        harness = CultureHarness(database, model, EmptyCatalog())
+
+        result = harness.chat("那你给我推荐呀")
+
+        self.assertEqual(result.intent, "recommend")
+        self.assertEqual(result.reply, "这里有五部适合你此刻心情的电影。")
+        self.assertEqual(result.catalog_items, [])
+        self.assertIn("returned no verified candidates", model.system)
 
     def test_recommendation_receives_recent_conversation(self) -> None:
         model = RecordingModel()
