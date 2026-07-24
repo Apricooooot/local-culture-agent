@@ -91,8 +91,31 @@ class HarnessTests(unittest.TestCase):
 
         self.assertEqual(result.intent, "recommend")
         self.assertEqual(result.reply, "这里有五部适合你此刻心情的电影。")
-        self.assertIn("今天很累", model.messages[0]["content"])
-        self.assertIn("暂无相关记录", model.messages[0]["content"])
+        self.assertEqual(model.messages[-1]["content"], "今天很累，推荐五部轻松好笑的小妞电影")
+
+    def test_recommendation_receives_recent_conversation(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "follow-up.db")
+        harness = CultureHarness(database, model)
+        history = [
+            {"role": "user", "content": "推荐一些轻松好笑的小妞电影"},
+            {"role": "assistant", "content": "可以看看《伴娘》和《律政俏佳人》。"},
+        ]
+
+        result = harness.chat("不想看太老的，2000年以前的不想看", history)
+
+        self.assertEqual(result.intent, "recommend")
+        self.assertEqual(model.messages[-3:-1], history)
+        self.assertEqual(model.messages[-1]["content"], "不想看太老的，2000年以前的不想看")
+
+    def test_model_echo_is_removed(self) -> None:
+        message = "今天很累，推荐一部轻松的电影"
+        reply = f"{message}\n\n{message}\n\n可以看看《律政俏佳人》。"
+
+        self.assertEqual(
+            CultureHarness._clean_model_reply(reply, message),
+            "可以看看《律政俏佳人》。",
+        )
 
 
 if __name__ == "__main__":
