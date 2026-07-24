@@ -8,7 +8,7 @@ SUPPORTED_LANGUAGES = {"en", "zh"}
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en": {
-        "saved": "Saved locally: {kind} 《{title}》{rating}. Your original reflection has been preserved verbatim.",
+        "saved": "Saved locally: {kind} {title}{rating}. Your original reflection has been preserved verbatim.",
         "signals": " Initial signals: {tags}.",
         "model_unavailable": "The model is unavailable ({error}), but your local library still works.",
         "rating_invalid": "Rating must be between 0 and 10.",
@@ -30,7 +30,7 @@ MESSAGES: dict[str, dict[str, str]] = {
         "film": "film",
     },
     "zh": {
-        "saved": "记好了：{kind}《{title}》{rating}。你的原始感受已经完整保存在本地。",
+        "saved": "记好了：{kind} {title}{rating}。你的原始感受已经完整保存在本地。",
         "signals": " 我暂时提取了这些线索：{tags}。",
         "model_unavailable": "模型暂时不可用（{error}），但你的本地资料库仍然可以正常记录和查询。",
         "rating_invalid": "评分需要在 0 到 10 之间。",
@@ -267,15 +267,21 @@ def extract_title(text: str, language: str) -> str:
     if quoted:
         return quoted.group(1).strip()
 
-    if language == "en":
-        patterns = (
+    patterns = (
+        (
             r"\b(?:i\s+)?(?:watched|saw|rated)\s+(?:(?:the\s+)?(?:film|movie)\s+)?(.+?)(?=,\s*|\s+\d+(?:\.\d+)?\s*/10|\.\s|$)",
             r"\b(?:i\s+)?(?:finished\s+reading|read|finished)\s+(?:(?:the\s+)?(?:book|novel)\s+)?(.+?)(?=,\s*|\s+\d+(?:\.\d+)?\s*/10|\.\s|$)",
         )
-        for pattern in patterns:
-            match = re.search(pattern, text, flags=re.IGNORECASE)
-            if match:
-                return match.group(1).strip(" .")
+        if language == "en"
+        else (
+            r"(?:我)?(?:看完了?|看了|观看了?|记录(?:一部)?(?:电影|影片)?)[：:\s]*(?:电影|影片)?[：:\s]*([^，,。.!！?？；;]+?)(?=\s*(?:，|,|\d+(?:\.\d+)?\s*分|。|！|？|$))",
+            r"(?:我)?(?:读完了?|读了|阅读了?|记录(?:一本)?(?:书|小说)?)[：:\s]*(?:书|小说)?[：:\s]*([^，,。.!！?？；;]+?)(?=\s*(?:，|,|\d+(?:\.\d+)?\s*分|。|！|？|$))",
+        )
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return match.group(1).strip(" .")
     return ""
 
 
