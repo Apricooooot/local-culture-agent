@@ -19,6 +19,31 @@ const locale = {
   records: isChineseUI ? "条记录" : "records",
 };
 
+const tagLabels = {
+  slow_paced: { en: "slow-paced", zh: "慢节奏" },
+  gentle: { en: "gentle", zh: "温柔" },
+  restrained: { en: "restrained", zh: "克制" },
+  family: { en: "family", zh: "家庭" },
+  everyday_life: { en: "everyday life", zh: "人生观察" },
+  mystery: { en: "mystery", zh: "悬疑" },
+  science_fiction: { en: "science fiction", zh: "科幻" },
+  romance: { en: "romance", zh: "浪漫" },
+  humorous: { en: "humorous", zh: "幽默" },
+  heavy: { en: "heavy", zh: "沉重" },
+};
+
+const legacyTagIds = Object.fromEntries(
+  Object.entries(tagLabels).flatMap(([id, labels]) =>
+    Object.values(labels).map(label => [label, id])
+  )
+);
+
+function localizedTag(value) {
+  const id = legacyTagIds[value] || value;
+  const labels = tagLabels[id];
+  return labels ? labels[isChineseUI ? "zh" : "en"] : value;
+}
+
 function applyBrowserLocale() {
   if (!isChineseUI) return;
   document.documentElement.lang = "zh-CN";
@@ -175,7 +200,7 @@ async function loadLibrary() {
       <h3>《${escapeHtml(item.title)}》</h3>
       <span class="rating">${item.rating == null ? locale.unrated : `${item.rating}/10`}</span>
       <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
-      <div class="tags">${item.tags.map(tag => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+      <div class="tags">${item.tags.map(tag => `<span>${escapeHtml(localizedTag(tag))}</span>`).join("")}</div>
     </article>
   `).join("");
 }
