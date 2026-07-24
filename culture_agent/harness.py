@@ -237,7 +237,7 @@ class CultureHarness:
             )
             tags = join_localized(localized_tags(item["tags"], language), language)
             rows.append(
-                f"- 《{item['title']}》 {rating}; "
+                f"- {item['title']} {rating}; "
                 f"{translate(language, 'memory_tags')}: "
                 f"{tags or translate(language, 'none')}; "
                 f"{translate(language, 'memory_reflection')}: "
@@ -348,7 +348,7 @@ preserve their IDs, years, creators, and source URLs exactly."""
                 if item["rating"] is not None
                 else ""
             )
-            rows.append(f"• {icon}《{item['title']}》{rating}")
+            rows.append(f"• {icon} {item['title']}{rating}")
         return translate(language, "library_prefix") + "\n" + "\n".join(rows)
 
     @staticmethod
@@ -366,7 +366,7 @@ preserve their IDs, years, creators, and source URLs exactly."""
         details = []
         for tag, titles in list(tags.items())[:5]:
             evidence = join_localized(
-                (f"《{title}》" for title in titles[:3]),
+                titles[:3],
                 language,
             )
             details.append(
