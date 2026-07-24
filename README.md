@@ -269,6 +269,8 @@ What do I seem to enjoy, and what records support that?
 
 The same interactions work in Chinese. Conversation language is chosen from
 the user's current message rather than from the README or source-code language.
+Title marks are optional in both languages, so natural input such as
+`我看完一一，9分` is accepted alongside `我看完《一一》，9分`.
 
 ### Internationalization
 
