@@ -17,6 +17,9 @@ const locale = {
   readingMemory: isChineseUI ? "正在读取相关记忆…" : "Reading relevant memories…",
   error: isChineseUI ? "抱歉，刚才没有处理成功：" : "Sorry, that did not work: ",
   records: isChineseUI ? "条记录" : "records",
+  delete: isChineseUI ? "删除" : "Delete",
+  confirmDelete: isChineseUI ? "确定删除这条本地记录吗？" : "Delete this local record?",
+  deleteError: isChineseUI ? "删除失败：" : "Could not delete: ",
 };
 
 const tagLabels = {
@@ -201,9 +204,28 @@ async function loadLibrary() {
       <span class="rating">${item.rating == null ? locale.unrated : `${item.rating}/10`}</span>
       <p>${escapeHtml(item.reflection || locale.noReflection)}</p>
       <div class="tags">${item.tags.map(tag => `<span>${escapeHtml(localizedTag(tag))}</span>`).join("")}</div>
+      <button class="delete-entry" data-entry-id="${item.id}" type="button">${locale.delete}</button>
     </article>
   `).join("");
 }
+
+document.querySelector("#library-grid").addEventListener("click", async event => {
+  const button = event.target.closest(".delete-entry");
+  if (!button || !window.confirm(locale.confirmDelete)) return;
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/entries/${button.dataset.entryId}`, {
+      method: "DELETE"
+    });
+    const data = await response.json();
+    if (!response.ok || !data.deleted) throw new Error(data.error || response.statusText);
+    await loadLibrary();
+    renderMemories([]);
+  } catch (error) {
+    button.disabled = false;
+    window.alert(`${locale.deleteError}${error.message}`);
+  }
+});
 
 async function loadHealth() {
   try {
