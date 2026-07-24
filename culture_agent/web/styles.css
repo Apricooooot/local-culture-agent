@@ -91,6 +91,8 @@ h1 { margin: 0; font: 400 clamp(30px, 4vw, 43px)/1.15 Georgia, "Noto Serif SC", 
 .avatar { flex: 0 0 31px; width: 31px; height: 31px; border-radius: 9px; font-family: serif; font-size: 13px; }
 .bubble { max-width: min(640px, 87%); line-height: 1.72; font-size: 14px; }
 .bubble p { margin: 0 0 8px; white-space: pre-wrap; }
+.bubble a { color: var(--moss-dark); font-weight: 700; text-decoration-color: #9aaa93; text-underline-offset: 3px; }
+.bubble a:hover { color: var(--amber); }
 .user .bubble { background: #eeeadf; border-radius: 16px 16px 4px 16px; padding: 11px 15px; }
 .typing { color: var(--muted); animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
