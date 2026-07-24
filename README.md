@@ -22,7 +22,9 @@ The product is built around a **model + harness** architecture:
 - Searchable local library
 - Recommendations grounded in your own ratings and tags
 - Explainable memory: see which records informed a response
-- Optional OpenAI-compatible model support, including Ollama
+- Native Ollama support with per-request thinking control
+- Optional OpenAI-compatible model support
+- Grounded catalog candidates from Open Library and Wikidata
 - A deterministic offline mode that requires no API key
 - Replies that follow the language used in the current message
 
@@ -91,9 +93,11 @@ running:
 ollama pull qwen3:4b
 ollama list
 
-$env:CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
-$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434/v1"
-$env:CULTURE_AGENT_MODEL_NAME="qwen3:4b"
+$env:CULTURE_AGENT_MODEL_PROVIDER="ollama"
+$env:CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434"
+$env:CULTURE_AGENT_MODEL_NAME="qwen3:8b"
+$env:CULTURE_AGENT_CATALOG_PROVIDERS="openlibrary,wikidata"
+$env:CULTURE_AGENT_CATALOG_CONTACT="you@example.com"
 python -m culture_agent.server
 ```
 
@@ -102,16 +106,24 @@ python -m culture_agent.server
 ollama pull qwen3:4b
 ollama list
 
-export CULTURE_AGENT_MODEL_PROVIDER="openai-compatible"
-export CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434/v1"
-export CULTURE_AGENT_MODEL_NAME="qwen3:4b"
+export CULTURE_AGENT_MODEL_PROVIDER="ollama"
+export CULTURE_AGENT_MODEL_BASE_URL="http://localhost:11434"
+export CULTURE_AGENT_MODEL_NAME="qwen3:8b"
+export CULTURE_AGENT_CATALOG_PROVIDERS="openlibrary,wikidata"
+export CULTURE_AGENT_CATALOG_CONTACT="you@example.com"
 python -m culture_agent.server
 ```
 
 If Ollama is installed but the service is not running, start it with
-`ollama serve`. The app uses Ollama's
-[OpenAI-compatible chat endpoint](https://docs.ollama.com/api/openai-compatibility).
-The API key can remain empty because Ollama ignores it locally.
+`ollama serve`. The app uses Ollama's native
+[`/api/chat`](https://docs.ollama.com/api/chat) endpoint so the harness can
+control thinking on each request. No API key is required.
+
+The native Ollama adapter chooses thinking per request. Recording, ordinary
+chat, catalog filtering, and recommendations use `think: false`. Complex
+comparisons, cross-record synthesis, trend analysis, and review-style prompts
+use `think: true`. Catalog providers are opt-in because search terms leave the
+device; omit `CULTURE_AGENT_CATALOG_PROVIDERS` for a fully offline session.
 
 ### Other local model servers
 
@@ -192,8 +204,45 @@ it commercially.
 
 Model quality and memory usage depend on quantization, context size, backend,
 and hardware. A smaller model that runs reliably is a better starting point
-than a larger model that continuously swaps memory. For Chinese/English use,
-start with Qwen3 4B, then compare Qwen3 8B if resources allow.
+than a larger model that continuously swaps memory. For this agent's
+Chinese/English conversation and constraint-following workload, Qwen3 8B is the
+recommended local baseline; Qwen3 4B is best treated as a low-resource demo.
+
+### Grounded book and film data
+
+The agent can retrieve candidates before asking the model to rank them:
+
+| Kind | Source | License and boundary |
+| --- | --- | --- |
+| Books | [Open Library](https://openlibrary.org/developers/api) | Public low-volume APIs; identify the app, cache repeated requests, and use dumps for bulk work |
+| Films | [Wikidata](https://www.wikidata.org/wiki/Help:Data_access) | Structured data is CC0; coverage may be incomplete |
+| Optional film subset | [IMDb non-commercial datasets](https://www.imdb.com/interfaces/) | Personal/non-commercial use only; users download and import their own copy |
+
+Test the open providers without starting the web app:
+
+```powershell
+python scripts/search_catalog.py "轻松喜剧，2000年以后，不要动画" --kind film
+python scripts/search_catalog.py "城市 梦 卡尔维诺" --kind book
+```
+
+IMDb is not open source. For a private, non-commercial local installation,
+download the permitted TSV files yourself and run:
+
+```powershell
+python scripts/import_imdb.py `
+  --basics C:\datasets\title.basics.tsv.gz `
+  --ratings C:\datasets\title.ratings.tsv.gz `
+  --akas C:\datasets\title.akas.tsv.gz `
+  --out data\imdb_catalog.db `
+  --accept-imdb-noncommercial-terms
+```
+
+The generated database remains under `data/` and must not be committed or
+redistributed. The importer never downloads IMDb data automatically.
+
+TMDB is not enabled by default. Its current API terms contain restrictions for
+AI/LLM/chatbot applications, so this project does not depend on it without
+permission compatible with the intended use.
 
 ### Connection troubleshooting
 
@@ -242,30 +291,21 @@ action; the harness validates it and calls a typed storage method.
 
 ## Metadata sources
 
-The current MVP does **not** fetch external catalog metadata yet. The planned
-provider layer is:
+Open Library and Wikidata are implemented as opt-in catalog providers.
+Recommendations receive provider IDs and source URLs. When verified candidates
+are present, the model is restricted to that candidate set; if no candidate is
+returned, the harness reports that instead of asking the model to invent one.
+User-entered metadata remains available offline.
 
-- **Books:** Open Library Search, Works/Edition, and Covers APIs. It is a good
-  fit for low-volume, real-time lookup in an open-source project. It should not
-  be treated as an unlimited third-party database or used for bulk scraping.
-- **Films and TV:** TMDB API. Each installation should provide its own API
-  credential. The UI must include TMDB's required attribution before this
-  integration is released.
-- **User-entered metadata:** always remains available as a fallback, so the
-  journal is useful offline and is never locked to one catalog provider.
-
-Provider results should be cached locally with their provider ID, source URL,
-locale, and retrieval time. Provider facts must remain separate from user
-ratings and model-generated preference inferences.
-
-See [`docs/METADATA_SOURCES.md`](docs/METADATA_SOURCES.md) for the decision
-record and integration boundaries.
+See [`docs/METADATA_SOURCES.md`](docs/METADATA_SOURCES.md) for licensing,
+IMDb import instructions, provider boundaries, and the TMDB decision.
 
 ## API
 
 - `GET /api/health`
 - `GET /api/library`
-- `POST /api/chat` with `{ "message": "..." }`
+- `POST /api/chat` with `{ "message": "...", "history": [...] }`; responses
+  include `thinking_used` and grounded `catalog_items`
 - `POST /api/entries`
 - `DELETE /api/entries/:id`
 
@@ -277,7 +317,7 @@ python -m unittest discover -s tests -v
 
 ## Roadmap
 
-- Metadata lookup for books and films
+- Better catalog ranking, caching, and multilingual title resolution
 - Editable preference memories with confidence and provenance
 - Semantic retrieval and cross-work reflection
 - Import/export for common culture-tracking services
