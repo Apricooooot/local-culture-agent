@@ -2,68 +2,77 @@
 
 ## Status
 
-Proposed for the next milestone. No external catalog provider is called by the
-current MVP.
+Implemented as an opt-in provider layer. User records remain useful offline.
 
-## Goals
+## Grounding boundary
 
-- Resolve titles without forcing users to type every metadata field.
-- Keep the journal useful when offline or when a provider is unavailable.
-- Preserve source attribution and avoid mixing provider facts with AI inference.
-- Make every installation bring its own credentials where a provider requires
-  them.
+Catalog providers establish which works exist and supply identifiers, titles,
+years, creators, genres, and source URLs. The model may rank verified
+candidates and explain a match, but it must not alter provider facts or add a
+title outside the candidate set.
+
+If a configured provider returns no candidates, the agent returns an explicit
+no-results response instead of asking the model to invent alternatives.
 
 ## Books: Open Library
 
-Open Library is the default book provider because its Search API returns
-work-level and edition-level fields, including authors, publication years,
-identifiers, languages, and cover identifiers.
+Open Library is the default open book provider. Use only user-initiated,
+low-volume lookups, identify the application with
+`CULTURE_AGENT_CATALOG_CONTACT`, cache repeated requests, and use monthly dumps
+rather than the live API for future bulk features.
 
-Integration rules:
-
-1. Use low-volume, user-initiated lookups.
-2. Request only the fields required by the UI.
-3. Store the Open Library work/edition ID and retrieval timestamp.
-4. Use the Covers API by identifier instead of copying images into the repo.
-5. Do not perform bulk imports through the live API; use published data dumps
-   if a future feature genuinely requires bulk access.
-
-Official documentation:
-
-- https://openlibrary.org/dev/docs/api/search
 - https://openlibrary.org/developers/api
+- https://openlibrary.org/developers/licensing
 
-## Films and television: TMDB
+## Films and television: Wikidata
 
-TMDB is the proposed default provider for films and television because it has
-strong internationalized title, credit, poster, and release metadata.
+Wikidata is the default open film provider. Its structured data is CC0 and is
+used for canonical identity, year, director, broad genre, source URL, and
+cross-database IDs. Coverage is uneven; missing data must remain missing.
 
-Integration rules:
+- https://www.wikidata.org/wiki/Help:Data_access
+- https://www.wikidata.org/wiki/Wikidata:SPARQL_query_service
 
-1. Require users or deployers to supply their own API credential.
-2. Never commit credentials or proxy a shared secret from this repository.
-3. Add the official TMDB attribution notice and approved logo to the About or
-   Credits screen before releasing the integration.
-4. Store TMDB IDs and locale alongside cached facts.
-5. Treat provider ratings as catalog metadata, never as the user's rating.
+## Optional local IMDb datasets
 
-Official documentation:
+IMDb is not an open-source database. It publishes selected TSV datasets for
+personal and non-commercial use. Users may download those files themselves and
+import a private local copy:
 
-- https://developer.themoviedb.org/docs/faq
-- https://developer.themoviedb.org/v4/docs/authentication-application
+```powershell
+python scripts/import_imdb.py `
+  --basics C:\datasets\title.basics.tsv.gz `
+  --ratings C:\datasets\title.ratings.tsv.gz `
+  --akas C:\datasets\title.akas.tsv.gz `
+  --out data\imdb_catalog.db `
+  --accept-imdb-noncommercial-terms
+```
+
+The script never downloads IMDb data or accepts terms on the user's behalf.
+The generated database is ignored by Git and must not be redistributed.
+
+- https://www.imdb.com/interfaces/
+- https://help.imdb.com/article/imdb/general-information/can-i-use-imdb-data-in-my-software/G5JTRESSHJBBHTGX
+
+## Why TMDB is not the default
+
+TMDB has a convenient discovery API, but its current terms restrict using TMDB
+content in AI/LLM/chatbot applications and require separate arrangements for
+commercial use. This project therefore does not ship a TMDB integration.
+
+- https://www.themoviedb.org/api-terms-of-use
 
 ## Data boundaries
 
 | Data | Default location | May leave the device? |
 | --- | --- | --- |
 | Ratings, reflections, status | Local SQLite | No |
-| Preference memories and confidence | Local SQLite | Only minimal retrieved context when a remote model is explicitly enabled |
-| Embeddings | Local storage | No by default |
-| Catalog search terms | Request-time only | Yes, to the selected catalog provider |
-| Provider facts and IDs | Local cache | Refetched only as needed |
+| Conversation window | Browser memory | Only to the configured model |
+| Preference context | Local SQLite | Only minimal retrieved context sent to the configured model |
+| Catalog search terms | Request-time only | Yes, when open catalogs are enabled |
+| Provider facts and IDs | Response-time data; future local cache | Refetched only as needed |
+| Optional IMDb subset | Local SQLite | No; do not redistribute |
 | API credentials | Environment or OS secret store | Only to their provider |
 
-The model must never overwrite provider facts or user-authored text. Inferred
-tags and preferences require provenance, confidence, and an easy correction or
-deletion path.
+Provider facts, user-authored text, and model inferences must remain separate.
 
