@@ -4,7 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
-from culture_agent.model import OllamaModel
+from culture_agent.model import LangChainOllamaModel, OllamaModel
 
 
 class FakeResponse:
@@ -16,6 +16,24 @@ class FakeResponse:
 
     def read(self) -> bytes:
         return json.dumps({"message": {"content": "ok"}}).encode()
+
+
+class FakeAIMessage:
+    content = "ok"
+
+
+class FakeLangChainClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[tuple[str, str]], bool]] = []
+
+    def invoke(
+        self,
+        messages: list[tuple[str, str]],
+        *,
+        reasoning: bool,
+    ) -> FakeAIMessage:
+        self.calls.append((messages, reasoning))
+        return FakeAIMessage()
 
 
 class OllamaModelTests(unittest.TestCase):
@@ -38,6 +56,34 @@ class OllamaModelTests(unittest.TestCase):
 
         self.assertFalse(payloads[0]["think"])
         self.assertTrue(payloads[1]["think"])
+
+    def test_langchain_adapter_preserves_roles_and_thinking_policy(self) -> None:
+        client = FakeLangChainClient()
+        model = LangChainOllamaModel(
+            "http://localhost:11434",
+            "qwen3:8b",
+            client=client,
+        )
+
+        result = model.complete(
+            "system",
+            [
+                {"role": "user", "content": "question"},
+                {"role": "assistant", "content": "answer"},
+            ],
+            thinking=True,
+        )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(
+            client.calls[0][0],
+            [
+                ("system", "system"),
+                ("human", "question"),
+                ("ai", "answer"),
+            ],
+        )
+        self.assertTrue(client.calls[0][1])
 
 
 if __name__ == "__main__":
