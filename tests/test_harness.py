@@ -152,6 +152,17 @@ class HarnessTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.harness.add_entry({"title": "A", "kind": "podcast"})
 
+    def test_langchain_registry_exposes_read_only_tools(self) -> None:
+        self.assertEqual(
+            set(self.harness.read_tools),
+            {"search_local_memory", "list_local_library"},
+        )
+        self.assertFalse(any(
+            signal in tool_name
+            for tool_name in self.harness.read_tools
+            for signal in ("add", "write", "delete", "update")
+        ))
+
     def test_english_record_uses_english_reply(self) -> None:
         result = self.harness.chat(
             "I watched 《Arrival》, 9/10. I loved its quiet approach to language and grief."
