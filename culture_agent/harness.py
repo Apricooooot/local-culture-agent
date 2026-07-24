@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,6 +47,7 @@ class ChatResult:
     created_entry: dict[str, Any] | None = None
     thinking_used: bool = False
     catalog_items: list[CatalogItem] | None = None
+    links: list[dict[str, str]] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -57,6 +59,7 @@ class ChatResult:
             "catalog_items": [
                 item.as_dict() for item in (self.catalog_items or [])
             ],
+            "links": self.links or [],
         }
 
 
@@ -118,17 +121,19 @@ class CultureHarness:
             return ChatResult(self._library_reply(memories, language), intent, memories)
         if intent == "recommend":
             catalog_items = self._catalog_candidates(message, language)
+            reply = self._recommend_reply(
+                message,
+                memories,
+                language,
+                recent_history,
+                catalog_items,
+            )
             return ChatResult(
-                self._recommend_reply(
-                    message,
-                    memories,
-                    language,
-                    recent_history,
-                    catalog_items,
-                ),
+                reply,
                 intent,
                 memories,
                 catalog_items=catalog_items,
+                links=self._recommendation_links(reply, language, catalog_items),
             )
         if intent == "profile":
             thinking = should_think(message)
@@ -285,6 +290,7 @@ each and one useful caveat when relevant. Do not recommend titles already in
 the local records. You may use general cultural knowledge. Never create a
 plausible-sounding title, translated title, release year, creator, or plot
 detail. Omit any candidate whose identity or basic facts you are unsure about.
+Every recommended title must be unique. Check the final list for duplicates.
 Do not discuss catalog availability unless the user asks about it.
 
 Relevant local records:
@@ -304,7 +310,9 @@ preserve their IDs, years, creators, and source URLs exactly."""
                 ],
                 thinking=False,
             )
-            return self._clean_model_reply(reply, message)
+            return self._normalize_recommendation_reply(
+                self._clean_model_reply(reply, message)
+            )
         except RuntimeError as exc:
             return translate(language, "recommendation_unavailable", error=exc)
 
@@ -343,6 +351,69 @@ preserve their IDs, years, creators, and source URLs exactly."""
         while current and cleaned.startswith(current):
             cleaned = cleaned[len(current):].lstrip(" \t\r\n:：-—")
         return cleaned or reply.strip()
+
+    @classmethod
+    def _normalize_recommendation_reply(cls, reply: str) -> str:
+        # The browser does not render arbitrary model Markdown. Remove common
+        # emphasis markers and make uniqueness a harness guarantee.
+        cleaned = reply.replace("**", "").strip()
+        blocks = re.split(r"\n\s*\n", cleaned)
+        seen: set[str] = set()
+        result: list[str] = []
+        item_number = 0
+        for block in blocks:
+            item_match = re.match(r"^\s*\d+\s*[.、]\s*", block)
+            if not item_match:
+                result.append(block)
+                continue
+            title = cls._recommendation_title(block)
+            key = re.sub(r"\s+", "", title).casefold() if title else ""
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            item_number += 1
+            result.append(f"{item_number}. {block[item_match.end():].strip()}")
+        return "\n\n".join(part for part in result if part.strip())
+
+    @staticmethod
+    def _recommendation_title(block: str) -> str:
+        marked = re.search(r"《([^》]{1,120})》", block)
+        if marked:
+            return marked.group(1).strip()
+        numbered = re.match(
+            r"^\s*\d+\s*[.、]\s*([^（(\n—–-]{1,120}?)(?=\s*[（(—–-]|\n|$)",
+            block,
+        )
+        return numbered.group(1).strip(" *") if numbered else ""
+
+    @classmethod
+    def _recommendation_links(
+        cls,
+        reply: str,
+        language: str,
+        catalog_items: list[CatalogItem],
+    ) -> list[dict[str, str]]:
+        verified = {
+            item.title.casefold(): item.source_url
+            for item in catalog_items
+            if item.title and item.source_url
+        }
+        links: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for block in re.split(r"\n\s*\n", reply):
+            title = cls._recommendation_title(block)
+            key = title.casefold()
+            if not title or key in seen:
+                continue
+            seen.add(key)
+            url = verified.get(key)
+            if not url:
+                domain = "zh.wikipedia.org" if language == "zh" else "en.wikipedia.org"
+                query = urllib.parse.urlencode({"search": title})
+                url = f"https://{domain}/w/index.php?{query}"
+            links.append({"title": title, "url": url})
+        return links
 
     @staticmethod
     def _library_reply(memories: list[dict[str, Any]], language: str) -> str:
