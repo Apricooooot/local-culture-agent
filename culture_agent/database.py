@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from .i18n import canonical_tag
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
@@ -70,7 +72,11 @@ class CultureDatabase:
         # User-authored reflections are stored verbatim. Derived tags live in a
         # separate field and can be corrected without rewriting the source text.
         now = datetime.now(timezone.utc).isoformat()
-        tags = sorted({str(tag).strip() for tag in entry.get("tags", []) if str(tag).strip()})
+        tags = sorted({
+            canonical_tag(str(tag).strip())
+            for tag in entry.get("tags", [])
+            if str(tag).strip()
+        })
         with self.connect() as connection:
             cursor = connection.execute(
                 """
@@ -143,5 +149,9 @@ class CultureDatabase:
     @staticmethod
     def _serialize(row: sqlite3.Row) -> dict[str, Any]:
         result = dict(row)
-        result["tags"] = json.loads(result.pop("tags_json"))
+        result["tags"] = [
+            canonical_tag(value)
+            for value in json.loads(result.pop("tags_json"))
+        ]
         return result
+
