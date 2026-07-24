@@ -9,6 +9,18 @@ from culture_agent.harness import CultureHarness
 from culture_agent.model import OfflineModel
 
 
+class RecordingModel:
+    name = "recording-model"
+
+    def __init__(self) -> None:
+        self.messages: list[dict[str, str]] = []
+
+    def complete(self, system: str, messages: list[dict[str, str]]) -> str:
+        del system
+        self.messages = messages
+        return "这里有五部适合你此刻心情的电影。"
+
+
 class HarnessTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -70,6 +82,19 @@ class HarnessTests(unittest.TestCase):
         self.assertIn("not enough", english.reply.lower())
         self.assertIn("没有足够", chinese.reply)
 
+    def test_recommendation_uses_model_even_without_memories(self) -> None:
+        model = RecordingModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "recommend.db")
+        harness = CultureHarness(database, model)
+
+        result = harness.chat("今天很累，推荐五部轻松好笑的小妞电影")
+
+        self.assertEqual(result.intent, "recommend")
+        self.assertEqual(result.reply, "这里有五部适合你此刻心情的电影。")
+        self.assertIn("今天很累", model.messages[0]["content"])
+        self.assertIn("暂无相关记录", model.messages[0]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()
+
