@@ -82,6 +82,26 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.created_entry["creator"], "卡尔维诺")
         self.assertEqual(result.created_entry["rating"], 8.5)
 
+    def test_chinese_film_title_marks_are_optional(self) -> None:
+        result = self.harness.chat(
+            "我看完一一，9分。很喜欢它对日常生活的观察。"
+        )
+        self.assertEqual(result.intent, "record")
+        self.assertEqual(result.created_entry["title"], "一一")
+        self.assertEqual(result.created_entry["kind"], "film")
+        self.assertEqual(result.created_entry["rating"], 9)
+        self.assertNotIn("《", result.reply)
+        self.assertNotIn("》", result.reply)
+
+    def test_chinese_book_title_marks_are_optional(self) -> None:
+        result = self.harness.chat(
+            "我读完看不见的城市，8.5分。像在读很多关于城市的梦。"
+        )
+        self.assertEqual(result.intent, "record")
+        self.assertEqual(result.created_entry["title"], "看不见的城市")
+        self.assertEqual(result.created_entry["kind"], "book")
+        self.assertEqual(result.created_entry["rating"], 8.5)
+
     def test_invalid_rating_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             self.harness.chat("我看完《测试电影》，12分。")
@@ -90,7 +110,8 @@ class HarnessTests(unittest.TestCase):
         self.harness.chat("我看完《花样年华》，9分，喜欢克制的爱情。")
         result = self.harness.chat("我喜欢什么？为什么觉得？")
         self.assertEqual(result.intent, "profile")
-        self.assertIn("《花样年华》", result.reply)
+        self.assertIn("花样年华", result.reply)
+        self.assertNotIn("《", result.reply)
         self.assertIn("克制", result.reply)
 
     def test_manual_entry_validation(self) -> None:
