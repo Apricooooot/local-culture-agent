@@ -90,7 +90,7 @@ running:
 
 ```powershell
 # Windows PowerShell
-ollama pull qwen3:4b
+ollama pull qwen3:8b
 ollama list
 
 $env:CULTURE_AGENT_MODEL_PROVIDER="ollama"
@@ -103,7 +103,7 @@ python -m culture_agent.server
 
 ```bash
 # macOS or Linux
-ollama pull qwen3:4b
+ollama pull qwen3:8b
 ollama list
 
 export CULTURE_AGENT_MODEL_PROVIDER="ollama"
