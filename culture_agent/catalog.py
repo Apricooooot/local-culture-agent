@@ -45,12 +45,21 @@ def _read_json(url: str, user_agent: str, timeout: int = 15) -> dict[str, Any]:
         return json.loads(raw)
 
 
+def _catalog_timeout() -> int:
+    try:
+        configured = int(os.getenv("CULTURE_AGENT_CATALOG_TIMEOUT", "8"))
+    except ValueError:
+        configured = 8
+    return max(1, min(configured, 60))
+
+
 class OpenLibraryCatalog:
     provider = "openlibrary"
 
     def __init__(self) -> None:
         contact = os.getenv("CULTURE_AGENT_CATALOG_CONTACT", "local-installation")
         self.user_agent = f"local-culture-agent/0.1 ({contact})"
+        self.timeout = _catalog_timeout()
 
     def search(self, query: str, limit: int = 12) -> list[CatalogItem]:
         params = urllib.parse.urlencode(
@@ -63,6 +72,7 @@ class OpenLibraryCatalog:
         data = _read_json(
             f"https://openlibrary.org/search.json?{params}",
             self.user_agent,
+            timeout=self.timeout,
         )
         items: list[CatalogItem] = []
         for row in data.get("docs", []):
@@ -94,6 +104,7 @@ class WikidataFilmCatalog:
     def __init__(self) -> None:
         contact = os.getenv("CULTURE_AGENT_CATALOG_CONTACT", "local-installation")
         self.user_agent = f"local-culture-agent/0.1 ({contact})"
+        self.timeout = _catalog_timeout()
 
     def search(
         self,
@@ -130,7 +141,11 @@ ORDER BY DESC(?year)
 LIMIT {min(limit, 25)}
 """
         params = urllib.parse.urlencode({"query": sparql, "format": "json"})
-        data = _read_json(f"{self.endpoint}?{params}", self.user_agent, timeout=25)
+        data = _read_json(
+            f"{self.endpoint}?{params}",
+            self.user_agent,
+            timeout=self.timeout,
+        )
         items: list[CatalogItem] = []
         seen: set[str] = set()
         for row in data.get("results", {}).get("bindings", []):
