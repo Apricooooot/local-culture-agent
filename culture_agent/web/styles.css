@@ -134,6 +134,9 @@ h1 { margin: 0; font: 400 clamp(30px, 4vw, 43px)/1.15 Georgia, "Noto Serif SC", 
 .entry-card p { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .tags { margin-top: auto; display: flex; flex-wrap: wrap; gap: 5px; }
 .tags span { background: #e9e6dc; padding: 4px 7px; border-radius: 99px; color: #66675f; font-size: 9px; }
+.delete-entry { align-self: flex-end; margin-top: 12px; border: 0; background: transparent; color: var(--muted); font-size: 10px; cursor: pointer; }
+.delete-entry:hover { color: #9b443d; }
+.delete-entry:disabled { cursor: wait; opacity: .5; }
 .empty-library { text-align: center; color: var(--muted); margin: auto; }
 .empty-library > div { font-size: 38px; color: #aaa59b; }
 .empty-library h2 { color: var(--ink); font: 23px Georgia, serif; margin: 14px 0 6px; }
