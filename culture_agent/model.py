@@ -5,7 +5,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class Model(Protocol):
@@ -131,9 +131,78 @@ class OllamaModel:
             raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
 
+@dataclass
+class LangChainOllamaModel:
+    """LangChain model adapter that preserves the harness Model protocol."""
+
+    base_url: str
+    model: str
+    timeout: int = 120
+    client: Any = None
+
+    def __post_init__(self) -> None:
+        if self.client is None:
+            try:
+                from langchain_ollama import ChatOllama
+            except ImportError as exc:
+                raise RuntimeError(
+                    "LangChain Ollama support is not installed. "
+                    "Run: pip install -e ."
+                ) from exc
+            self.client = ChatOllama(
+                model=self.model,
+                base_url=self.base_url,
+                temperature=0.6,
+                client_kwargs={"timeout": self.timeout},
+            )
+
+    @property
+    def name(self) -> str:
+        return self.model
+
+    def complete(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        thinking: bool = False,
+    ) -> str:
+        langchain_messages: list[tuple[str, str]] = [("system", system)]
+        role_map = {"user": "human", "assistant": "ai", "system": "system"}
+        langchain_messages.extend(
+            (role_map.get(message["role"], message["role"]), message["content"])
+            for message in messages
+        )
+        try:
+            response = self.client.invoke(
+                langchain_messages,
+                reasoning=thinking,
+            )
+        except Exception as exc:
+            raise RuntimeError(f"LangChain Ollama request failed: {exc}") from exc
+        content = response.content
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            return "".join(
+                str(block.get("text", ""))
+                for block in content
+                if isinstance(block, dict) and block.get("type") == "text"
+            )
+        return str(content)
+
+
 def model_from_environment() -> Model:
     provider = os.getenv("CULTURE_AGENT_MODEL_PROVIDER", "offline").lower()
     if provider == "ollama":
+        base_url = os.getenv("CULTURE_AGENT_MODEL_BASE_URL", "http://localhost:11434")
+        if base_url.rstrip("/").endswith("/v1"):
+            base_url = base_url.rstrip("/")[:-3]
+        return LangChainOllamaModel(
+            base_url=base_url,
+            model=os.getenv("CULTURE_AGENT_MODEL_NAME", "qwen3:8b"),
+        )
+    if provider == "ollama-native":
         base_url = os.getenv("CULTURE_AGENT_MODEL_BASE_URL", "http://localhost:11434")
         if base_url.rstrip("/").endswith("/v1"):
             base_url = base_url.rstrip("/")[:-3]
