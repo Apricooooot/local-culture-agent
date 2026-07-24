@@ -13,7 +13,10 @@ Reply in the language used by the user's current message.
 User data comes from a local library. Never invent a preference or claim to
 remember something that was not provided. When using memory, identify the
 supporting record. The model cannot write to storage; all writes are performed
-and validated by the harness."""
+and validated by the harness.
+Use the recent conversation to resolve follow-up constraints and references.
+Answer directly. Do not repeat, quote, or paraphrase the user's request before
+answering."""
 
 
 @dataclass
@@ -37,10 +40,15 @@ class CultureHarness:
         self.database = database
         self.model = model
 
-    def chat(self, message: str) -> ChatResult:
+    def chat(
+        self,
+        message: str,
+        history: list[dict[str, str]] | None = None,
+    ) -> ChatResult:
         message = message.strip()
         if not message:
             raise ValueError("Message cannot be empty")
+        recent_history = self._normalize_history(history)
         language = self._detect_language(message)
 
         parsed = self._parse_record(message)
@@ -72,7 +80,12 @@ class CultureHarness:
             return ChatResult(self._library_reply(memories, language), intent, memories)
         if intent == "recommend":
             return ChatResult(
-                self._recommend_reply(message, memories, language),
+                self._recommend_reply(
+                    message,
+                    memories,
+                    language,
+                    recent_history,
+                ),
                 intent,
                 memories,
             )
@@ -83,8 +96,16 @@ class CultureHarness:
         try:
             reply = self.model.complete(
                 SYSTEM_PROMPT,
-                [{"role": "user", "content": f"Relevant local memories:\n{context}\n\nUser: {message}"}],
+                [
+                    {
+                        "role": "system",
+                        "content": f"Relevant local memories for this turn:\n{context}",
+                    },
+                    *recent_history,
+                    {"role": "user", "content": message},
+                ],
             )
+            reply = self._clean_model_reply(reply, message)
         except RuntimeError as exc:
             reply = (
                 f"模型暂时不可用（{exc}），但你的本地资料库仍然可以正常记录和查询。"
@@ -220,29 +241,32 @@ class CultureHarness:
         message: str,
         memories: list[dict[str, Any]],
         language: str,
+        history: list[dict[str, str]] | None = None,
     ) -> str:
         context = self._memory_context(memories)
-        recommendation_prompt = f"""The user is asking for a recommendation.
-Use the current request even when the local library is empty. Treat local
-records as optional preference evidence, not as a prerequisite.
+        recommendation_system = f"""{SYSTEM_PROMPT}
 
-Recommend up to five real, widely known books or films that match the user's
-stated mood, genre, tone, and time constraints. Give a brief reason for each
-choice and mention one useful caveat when relevant. Do not recommend a title
-already present in the local records. Do not claim that the user has a
-preference unless the records support it. The external catalog is not connected
-yet, so acknowledge uncertainty rather than inventing facts.
+For this recommendation request, preserve every constraint established in the
+recent conversation unless the user changes it. Treat the current message as a
+follow-up to the previous recommendations when appropriate.
+Recommend up to five real, widely known books or films. Give a brief reason for
+each and one useful caveat when relevant. Do not recommend titles already in
+the local records. You may use general cultural knowledge. Never create a
+plausible-sounding title, translated title, release year, creator, or plot
+detail. Omit any candidate whose identity or basic facts you are unsure about.
+Do not discuss catalog availability unless the user asks about it.
 
 Relevant local records:
-{context}
-
-User request:
-{message}"""
+{context}"""
         try:
-            return self.model.complete(
-                SYSTEM_PROMPT,
-                [{"role": "user", "content": recommendation_prompt}],
+            reply = self.model.complete(
+                recommendation_system,
+                [
+                    *self._normalize_history(history),
+                    {"role": "user", "content": message},
+                ],
             )
+            return self._clean_model_reply(reply, message)
         except RuntimeError as exc:
             if language == "zh":
                 return (
@@ -253,6 +277,34 @@ User request:
                 f"The recommendation model is unavailable ({exc}). Your local "
                 "records are safe; confirm that Ollama is running and try again."
             )
+
+    @staticmethod
+    def _normalize_history(
+        history: list[dict[str, str]] | None,
+    ) -> list[dict[str, str]]:
+        if not isinstance(history, list):
+            return []
+        normalized: list[dict[str, str]] = []
+        for item in history[-12:]:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if role not in {"user", "assistant"} or not isinstance(content, str):
+                continue
+            content = content.strip()
+            if content:
+                normalized.append({"role": role, "content": content[:4000]})
+        return normalized
+
+    @staticmethod
+    def _clean_model_reply(reply: str, message: str) -> str:
+        cleaned = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
+        current = message.strip()
+        # Small local models occasionally echo the current request once or twice.
+        while current and cleaned.startswith(current):
+            cleaned = cleaned[len(current):].lstrip(" \t\r\n:：-—")
+        return cleaned or reply.strip()
 
     @staticmethod
     def _library_reply(memories: list[dict[str, Any]], language: str) -> str:
