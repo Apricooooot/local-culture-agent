@@ -25,6 +25,7 @@ from .i18n import (
     tag_label,
     translate,
 )
+from .langchain_tools import build_read_tools
 from .model import Model
 
 
@@ -73,6 +74,7 @@ class CultureHarness:
         self.database = database
         self.model = model
         self.catalog = catalog
+        self.read_tools = build_read_tools(database, catalog)
 
     def chat(
         self,
@@ -223,14 +225,17 @@ class CultureHarness:
 
     def _retrieve(self, message: str, intent: str) -> list[dict[str, Any]]:
         if intent in {"recommend", "profile"}:
-            entries = self.database.list_entries(50)
+            entries = self.read_tools["list_local_library"].invoke({"limit": 50})
             return sorted(
                 entries,
                 key=lambda item: (item["rating"] is not None, item["rating"] or 0),
                 reverse=True,
             )[:8]
-        matches = self.database.search(message, 8)
-        return matches or self.database.list_entries(5)
+        matches = self.read_tools["search_local_memory"].invoke({
+            "query": message,
+            "limit": 8,
+        })
+        return matches or self.read_tools["list_local_library"].invoke({"limit": 5})
 
     @staticmethod
     def _memory_context(memories: list[dict[str, Any]], language: str) -> str:
@@ -321,7 +326,25 @@ preserve their IDs, years, creators, and source URLs exactly."""
             return []
         kind = "book" if is_book_request(message) else "film"
         try:
-            return self.catalog.candidates(message, kind, limit=12, language=language)
+            rows = self.read_tools["search_culture_catalog"].invoke({
+                "message": message,
+                "kind": kind,
+                "limit": 12,
+                "language": language,
+            })
+            return [
+                CatalogItem(
+                    provider=row["provider"],
+                    provider_id=row["provider_id"],
+                    title=row["title"],
+                    kind=row["kind"],
+                    year=row.get("year"),
+                    creator=row.get("creator", ""),
+                    genres=tuple(row.get("genres", [])),
+                    source_url=row.get("source_url", ""),
+                )
+                for row in rows
+            ]
         except (OSError, ValueError, json.JSONDecodeError):
             return []
 
