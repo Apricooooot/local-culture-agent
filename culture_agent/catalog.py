@@ -9,6 +9,8 @@ import urllib.request
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from .i18n import excludes_animation, is_comedy_request
+
 
 @dataclass
 class CatalogItem:
@@ -93,27 +95,25 @@ class WikidataFilmCatalog:
         contact = os.getenv("CULTURE_AGENT_CATALOG_CONTACT", "local-installation")
         self.user_agent = f"local-culture-agent/0.1 ({contact})"
 
-    def search(self, query: str, limit: int = 16) -> list[CatalogItem]:
+    def search(
+        self,
+        query: str,
+        limit: int = 16,
+        language: str = "en",
+    ) -> list[CatalogItem]:
         year_match = re.search(r"(19|20)\d{2}", query)
         minimum_year = int(year_match.group()) if year_match else 2000
-        wants_comedy = any(
-            token in query.lower()
-            for token in ("喜剧", "好笑", "幽默", "轻松", "comedy", "funny")
-        )
-        excludes_animation = any(
-            token in query.lower()
-            for token in ("不要动画", "非动画", "no animation", "not animated")
-        )
         genre_clause = (
             "?item wdt:P136/wdt:P279* wd:Q157443 ."
-            if wants_comedy
+            if is_comedy_request(query)
             else "?item wdt:P136 ?genre ."
         )
         animation_filter = (
             "FILTER NOT EXISTS { ?item wdt:P136/wdt:P279* wd:Q202866 . }"
-            if excludes_animation
+            if excludes_animation(query)
             else ""
         )
+        label_languages = "zh,en" if language == "zh" else "en"
         sparql = f"""
 SELECT DISTINCT ?item ?itemLabel ?year ?directorLabel ?imdb WHERE {{
   ?item wdt:P31/wdt:P279* wd:Q11424 ;
@@ -124,7 +124,7 @@ SELECT DISTINCT ?item ?itemLabel ?year ?directorLabel ?imdb WHERE {{
   OPTIONAL {{ ?item wdt:P57 ?director . }}
   OPTIONAL {{ ?item wdt:P345 ?imdb . }}
   BIND(YEAR(?date) AS ?year)
-  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "zh,en". }}
+  SERVICE wikibase:label {{ bd:serviceParam wikibase:language "{label_languages}". }}
 }}
 ORDER BY DESC(?year)
 LIMIT {min(limit, 25)}
@@ -161,11 +161,17 @@ class CatalogHub:
         self.books = OpenLibraryCatalog() if "openlibrary" in providers else None
         self.films = WikidataFilmCatalog() if "wikidata" in providers else None
 
-    def candidates(self, message: str, kind: str, limit: int = 12) -> list[CatalogItem]:
+    def candidates(
+        self,
+        message: str,
+        kind: str,
+        limit: int = 12,
+        language: str = "en",
+    ) -> list[CatalogItem]:
         if kind == "book" and self.books:
             return self.books.search(message, limit)
         if kind == "film" and self.films:
-            return self.films.search(message, limit)
+            return self.films.search(message, limit, language)
         return []
 
 
