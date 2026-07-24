@@ -87,11 +87,36 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
-function addMessage(role, text, pending = false) {
+function addTitleLinks(paragraph, text, links = []) {
+  paragraph.textContent = "";
+  let cursor = 0;
+  while (cursor < text.length) {
+    let match = null;
+    links.forEach(link => {
+      const index = text.indexOf(link.title, cursor);
+      if (index >= 0 && (!match || index < match.index)) match = { ...link, index };
+    });
+    if (!match) {
+      paragraph.append(document.createTextNode(text.slice(cursor)));
+      break;
+    }
+    paragraph.append(document.createTextNode(text.slice(cursor, match.index)));
+    const anchor = document.createElement("a");
+    anchor.href = match.url;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+    anchor.textContent = match.title;
+    paragraph.append(anchor);
+    cursor = match.index + match.title.length;
+  }
+}
+
+function addMessage(role, text, pending = false, links = []) {
   const article = document.createElement("article");
   article.className = `message ${role}`;
   if (role === "assistant") {
     article.innerHTML = `<div class="avatar">栖</div><div class="bubble ${pending ? "typing" : ""}"><p>${escapeHtml(text)}</p></div>`;
+    if (links.length) addTitleLinks(article.querySelector("p"), text, links);
   } else {
     article.innerHTML = `<div class="bubble"><p>${escapeHtml(text)}</p></div>`;
   }
@@ -133,7 +158,7 @@ async function sendMessage(text) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "请求失败");
     pending.remove();
-    addMessage("assistant", data.reply);
+    addMessage("assistant", data.reply, false, data.links || []);
     conversationHistory.push(
       { role: "user", content: clean },
       { role: "assistant", content: data.reply }
