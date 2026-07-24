@@ -1,12 +1,10 @@
-
 # Local Culture Agent
 
 A local-first AI companion that remembers what you read and watch, helps you
 record ratings and reflections, and recommends what to explore next.
 
-> **Project status:** early, usable MVP. The local journal works today.
-> External book and film catalog integrations are documented but not yet
-> implemented.
+> **Project status:** early, usable MVP. The local journal works today, with
+> optional Open Library and Wikidata catalog grounding.
 
 The product is built around a **model + harness** architecture:
 
@@ -271,6 +269,25 @@ What do I seem to enjoy, and what records support that?
 
 The same interactions work in Chinese. Conversation language is chosen from
 the user's current message rather than from the README or source-code language.
+
+### Internationalization
+
+The harness keeps language-specific behavior in `culture_agent/i18n.py`.
+English and Chinese currently share the same language-neutral intent names and
+canonical tag IDs. For example, `science_fiction` is stored in SQLite and
+rendered as either `science fiction` or `科幻` for the current language. This
+keeps memory portable and prevents language changes from fragmenting a user's
+preference history.
+
+Language is detected per message, so a user can switch languages during one
+conversation. Record parsing, validation errors, library summaries, preference
+evidence, memory context, catalog label selection, and browser tag labels all
+follow that turn's language. Existing databases containing the older localized
+tag values remain readable and are normalized automatically.
+
+To add another language, extend the message catalog, signal dictionaries, and
+tag labels in `culture_agent/i18n.py`, then add the corresponding browser copy
+and tests. Canonical intent and tag IDs should not be translated.
 
 ## Architecture
 
