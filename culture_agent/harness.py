@@ -71,7 +71,11 @@ class CultureHarness:
         if intent == "library":
             return ChatResult(self._library_reply(memories, language), intent, memories)
         if intent == "recommend":
-            return ChatResult(self._recommend_reply(memories, language), intent, memories)
+            return ChatResult(
+                self._recommend_reply(message, memories, language),
+                intent,
+                memories,
+            )
         if intent == "profile":
             return ChatResult(self._profile_reply(memories, language), intent, memories)
 
@@ -211,39 +215,44 @@ class CultureHarness:
             for item in memories
         )
 
-    def _recommend_reply(self, memories: list[dict[str, Any]], language: str) -> str:
-        if not memories:
-            if language == "en":
+    def _recommend_reply(
+        self,
+        message: str,
+        memories: list[dict[str, Any]],
+        language: str,
+    ) -> str:
+        context = self._memory_context(memories)
+        recommendation_prompt = f"""The user is asking for a recommendation.
+Use the current request even when the local library is empty. Treat local
+records as optional preference evidence, not as a prerequisite.
+
+Recommend up to five real, widely known books or films that match the user's
+stated mood, genre, tone, and time constraints. Give a brief reason for each
+choice and mention one useful caveat when relevant. Do not recommend a title
+already present in the local records. Do not claim that the user has a
+preference unless the records support it. The external catalog is not connected
+yet, so acknowledge uncertainty rather than inventing facts.
+
+Relevant local records:
+{context}
+
+User request:
+{message}"""
+        try:
+            return self.model.complete(
+                SYSTEM_PROMPT,
+                [{"role": "user", "content": recommendation_prompt}],
+            )
+        except RuntimeError as exc:
+            if language == "zh":
                 return (
-                    "I do not know your taste yet. Tell me one or two works you "
-                    "liked or disliked, or describe your mood, time, and desired direction."
+                    f"推荐模型暂时不可用（{exc}）。你的本地记录没有丢失；"
+                    "请确认 Ollama 正在运行后重试。"
                 )
             return (
-                "我还不了解你的口味。先告诉我一两部你喜欢或不喜欢的书/电影，"
-                "或者直接说此刻的心情、时长和想探索的方向。"
+                f"The recommendation model is unavailable ({exc}). Your local "
+                "records are safe; confirm that Ollama is running and try again."
             )
-        liked = [item for item in memories if (item["rating"] or 0) >= 8]
-        signals: list[str] = []
-        for item in liked:
-            signals.extend(item["tags"])
-        top_tags = list(dict.fromkeys(signals))[:4]
-        evidence = "、".join(f"《{item['title']}》" for item in liked[:3]) or "最近的记录"
-        preference = "、".join(top_tags) or "你记录中的情绪和主题"
-        if language == "en":
-            evidence_en = ", ".join(f"《{item['title']}》" for item in liked[:3]) or "your recent records"
-            preference_en = ", ".join(top_tags) or "the moods and themes in your journal"
-            return (
-                f"Based on {evidence_en}, I would prioritize works with "
-                f"{preference_en} while excluding titles already in your library. "
-                "The MVP does not have an external catalog yet, so I will not invent "
-                "titles. Once the provider layer lands, I will return three candidates "
-                "with a match reason and a possible downside for each."
-            )
-        return (
-            f"根据你对{evidence}的评价，我会优先寻找带有“{preference}”特质、"
-            "同时避开你已经记录过的作品。当前 MVP 还没有接入外部作品目录，"
-            "所以我不会编造片名；下一步接入目录后，我会给出 3 个候选及各自的命中点和风险点。"
-        )
 
     @staticmethod
     def _library_reply(memories: list[dict[str, Any]], language: str) -> str:
@@ -309,3 +318,4 @@ class CultureHarness:
         # without changing a global profile setting.
         cjk_count = sum("\u4e00" <= character <= "\u9fff" for character in message)
         return "zh" if cjk_count >= 2 else "en"
+
