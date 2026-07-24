@@ -31,6 +31,26 @@ class RecordingModel:
         return "这里有五部适合你此刻心情的电影。"
 
 
+class DuplicateRecommendationModel(RecordingModel):
+    def complete(
+        self,
+        system: str,
+        messages: list[dict[str, str]],
+        *,
+        thinking: bool = False,
+    ) -> str:
+        self.system = system
+        self.messages = messages
+        self.thinking = thinking
+        return (
+            "1. **《傲慢与偏见》(2005)** - 轻松幽默。\n\n"
+            "2. **《真爱至上》(2003)** - 温暖群像。\n\n"
+            "3. **《天生一对》(1998)** - 节奏轻快。\n\n"
+            "4. **《真爱至上》(2003)** - 很温暖。\n\n"
+            "5. **《爱在黎明破晓前》(1995)** - 浪漫自然。"
+        )
+
+
 class StubCatalog:
     def candidates(
         self,
@@ -230,6 +250,46 @@ class HarnessTests(unittest.TestCase):
         self.assertEqual(result.reply, "这里有五部适合你此刻心情的电影。")
         self.assertEqual(result.catalog_items, [])
         self.assertIn("returned no verified candidates", model.system)
+
+    def test_recommendations_are_deduplicated_and_renumbered(self) -> None:
+        model = DuplicateRecommendationModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "deduplicate.db")
+        harness = CultureHarness(database, model)
+
+        result = harness.chat("推荐五部轻松的爱情电影")
+
+        self.assertEqual(result.reply.count("真爱至上"), 1)
+        self.assertNotIn("**", result.reply)
+        self.assertIn("4. 《爱在黎明破晓前》", result.reply)
+        self.assertNotIn("5.", result.reply)
+
+    def test_recommendation_titles_include_safe_wikipedia_links(self) -> None:
+        model = DuplicateRecommendationModel()
+        database = CultureDatabase(Path(self.temp_dir.name) / "links.db")
+        harness = CultureHarness(database, model)
+
+        result = harness.chat("推荐五部轻松的爱情电影")
+        links = result.as_dict()["links"]
+
+        self.assertEqual(len(links), 4)
+        self.assertEqual(len({link["title"] for link in links}), 4)
+        self.assertEqual(links[1]["title"], "真爱至上")
+        self.assertTrue(links[1]["url"].startswith("https://zh.wikipedia.org/"))
+
+    def test_verified_catalog_source_is_preferred_over_wikipedia(self) -> None:
+        links = CultureHarness._recommendation_links(
+            "1. Legally Blonde (2001) - A cheerful comedy.",
+            "en",
+            StubCatalog().candidates("", "film"),
+        )
+
+        self.assertEqual(
+            links,
+            [{
+                "title": "Legally Blonde",
+                "url": "https://www.wikidata.org/wiki/Q147235",
+            }],
+        )
 
     def test_recommendation_receives_recent_conversation(self) -> None:
         model = RecordingModel()
